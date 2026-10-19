@@ -21,6 +21,13 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
+      - name: Cache dependency vulnerability data
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/dependency-check-data
+          key: dependency-check-${{ runner.os }}-${{ hashFiles('gradle.lockfile', 'build.gradle.kts') }}
+          restore-keys: |
+            dependency-check-${{ runner.os }}-
       - name: Test and package
         run: ./gradlew clean test buildFatJar
       - name: Check browser JavaScript syntax
@@ -35,7 +42,7 @@ jobs:
       - name: Dependency vulnerability scan
         # The NVD feed is external. Bound it so a stalled feed cannot leave a
         # release indefinitely in progress; a timeout still fails the release.
-        timeout-minutes: 15
+        timeout-minutes: 45
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: ./gradlew dependencyCheckAnalyze

@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width,initial-scale=1'>
+  <title>Accept Invitation | AITSM</title>
+  <link rel='stylesheet' href='/shared/css/styles.css'>
+</head>
+<body class='auth-shell auth-dark'>
+<section class='auth-panel auth-panel-wide'>
+  <p class='eyebrow auth-eyebrow'>Invited Access</p>
+  <h2 class='auth-heading'>Accept your invitation</h2>
+  <p class='auth-subtitle auth-subtitle-left'>Verify your company invitation and finish setting up your account.</p>
+
+  <p id='invitationState' class='small' role='status' aria-live='polite'>Verifying invitation…</p>
+
+  <form id='invitationAcceptanceForm' hidden>
+    <div class='form-grid signup-grid'>
+      <div class='form-group'><label>Full Name</label><input id='fullName'></div>
+      <div class='form-group'><label>Invited Email Address</label><input id='email' type='email' readonly></div>
+      <div class='form-group'><label>Department</label><input id='department'></div>
+      <div class='form-group'><label>Password</label><input id='password' type='password'></div>
+      <div class='form-group'><label>Confirm Password</label><input id='confirmPassword' type='password'></div>
+    </div>
+
+    <div class='signup-eula-wrap'>
+      <input id='eula' type='checkbox' aria-label='I agree to the End-User License Agreement'>
+      <button type='button' class='eula-link-btn' onclick='openEulaModal()'>I have read and agree to the End-User License Agreement.</button>
+    </div>
+
+    <div class='inline-actions auth-actions'><button id='acceptInvitationButton' class='btn btn-primary auth-login-btn' type='submit'>Accept Invitation</button></div>
+    <p class='small auth-links'>Already have an account? <a href='/login' class='text-primary'>login</a>.</p>
+  </form>
+</section>
+
+<div id='eulaModal' class='modal-overlay hidden' onclick='closeEulaModalOnOverlay(event)'>
+  <section class='modal-card eula-modal-card'>
+    <div class='eula-modal-head'>
+      <p class='eyebrow eula-modal-eyebrow'>Legal Agreement</p>
+      <h3 class='section-title'>End-User License Agreement (EULA)</h3>
+      <p class='small eula-modal-subtitle'>Please review these terms before completing your registration.</p>
+    </div>
+    <div class='eula-box'>
+      <ul class='eula-points'>
+        <li>By using AITSM, you agree to enterprise IT service terms, audit logging, and security controls required for managed support workflows.</li>
+        <li>You confirm that submitted account details are accurate and belong to your organization.</li>
+        <li>You consent to operational logs and service telemetry being collected for troubleshooting, incident response, and compliance reporting.</li>
+        <li>Access may be suspended for misuse, unauthorized access attempts, or policy violations.</li>
+      </ul>
+    </div>
+    <div class='eula-modal-actions'>
+      <button class='btn btn-ghost auth-ghost-btn' type='button' onclick='closeEulaModal()'>Close</button>
+      <button class='btn btn-primary' type='button' onclick='acceptEulaFromModal()'>I Agree</button>
+    </div>
+  </section>
+</div>
+
+<script src='/modules/common/js/app.js'></script>
+<script src='/signup/js/auth.js'></script>
+</body>
+</html>

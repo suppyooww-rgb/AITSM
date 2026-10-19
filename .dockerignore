@@ -1,0 +1,15 @@
+.git
+.gradle
+.idea
+.kotlin
+.vscode
+build
+uploads
+output
+tmp
+src/main/resources/collector/AITSMCollectorSetup.exe
+.env
+.env.*
+!.env.example
+*.iml
+*.log

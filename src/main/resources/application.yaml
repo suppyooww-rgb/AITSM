@@ -1,0 +1,12 @@
+ktor:
+  application:
+    modules:
+      - com.aitsm.ApplicationKt.module
+  deployment:
+    port: ${PORT:8070}
+
+ai:
+  provider: ollama
+  ollama:
+    model: ${OLLAMA_MODEL:qwen3:8b}
+  timeoutMillis: ${AI_TIMEOUT_MILLIS:60000}

@@ -1,0 +1,184 @@
+<!doctype html>
+<html>
+<head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Ticket Management | AITSM</title><link rel='stylesheet' href='/shared/css/styles.css'><link rel='stylesheet' href='/modules/common/css/table-skeleton.css'></head>
+<body>
+<div class='app-layout'>
+  <aside id='adminSidebar' class='sidebar'></aside>
+  <main class='content'>
+    <section id='utilityHeader' class='utility-bar card'></section>
+    <div class='topbar'>
+      <div>
+        <h1 class='page-title'>Ticket Management</h1>
+        <p class='page-subtitle'>Monitor incoming requests, prioritize work, and update ticket states.</p>
+      </div>
+    </div>
+    <section class='card'>
+      <div class='card-head'>
+        <div>
+          <h3 class='section-title'>Ticket Queue <span class='help-tip' data-help='Search and sort tickets, then update status from the actions menu.'>?</span></h3>
+          <p class='section-subtitle'>Focused view of active ticket operations.</p>
+        </div>
+        <div id='adminTicketCount' class='small'></div>
+      </div>
+      <div class='form-grid' style='margin-bottom:12px'>
+        <div class='form-group'>
+          <label for='adminTicketSearch'>Search</label>
+          <input id='adminTicketSearch' type='search' placeholder='Ticket ID, title, requester, or category'>
+        </div>
+        <div class='form-group'>
+          <label for='adminTicketStatusFilter'>Status</label>
+          <select id='adminTicketStatusFilter'>
+            <option value='all'>All statuses</option>
+            <option value='open'>Open</option>
+            <option value='in progress'>In Progress</option>
+            <option value='resolved'>Resolved</option>
+            <option value='closed'>Closed</option>
+          </select>
+        </div>
+        <div class='form-group'>
+          <label for='adminTicketPriorityFilter'>Priority</label>
+          <select id='adminTicketPriorityFilter'>
+            <option value='all'>All priorities</option>
+            <option value='Critical'>Critical</option>
+            <option value='High'>High</option>
+            <option value='Medium'>Medium</option>
+            <option value='Low'>Low</option>
+          </select>
+        </div>
+        <div class='form-group'>
+          <label for='adminTicketSort'>Sort</label>
+          <select id='adminTicketSort'>
+            <option value='updated-desc'>Updated (latest)</option>
+            <option value='updated-asc'>Updated (oldest)</option>
+            <option value='priority-desc'>Priority (highest)</option>
+            <option value='priority-asc'>Priority (lowest)</option>
+            <option value='id-desc'>Ticket ID (latest)</option>
+            <option value='id-asc'>Ticket ID (oldest)</option>
+          </select>
+        </div>
+      </div>
+      <div class='table-wrap'>
+        <table>
+          <thead><tr><th>ID</th><th>Requester</th><th>Title</th><th>Category</th><th>Priority</th><th>Status</th><th>AI SLA Risk</th><th>Updated</th><th>Action</th></tr></thead>
+          <tbody id='adminTicketRows'></tbody>
+        </table>
+      </div>
+    </section>
+    <dialog id='ticketTransitionDialog' class='ticket-transition-dialog' aria-labelledby='ticketTransitionTitle'>
+      <form id='ticketTransitionForm' class='ticket-transition-form'>
+        <div class='card-head'>
+          <div>
+            <p class='page-kicker'>Audited status change</p>
+            <h3 id='ticketTransitionTitle' class='section-title'>Update ticket status</h3>
+            <p id='ticketTransitionMeta' class='section-subtitle'></p>
+          </div>
+          <button id='closeTicketTransitionBtn' class='btn btn-ghost icon-btn' type='button' aria-label='Close dialog'>×</button>
+        </div>
+        <input id='ticketTransitionId' type='hidden'>
+        <div class='form-group'>
+          <label for='ticketTransitionStatus'>New status</label>
+          <select id='ticketTransitionStatus' required>
+            <option value='Open'>Open</option>
+            <option value='In Progress'>In Progress</option>
+            <option value='Resolved'>Resolved</option>
+            <option value='Closed'>Closed</option>
+          </select>
+        </div>
+        <div class='form-group'>
+          <label for='ticketTransitionNote'>Internal work note *</label>
+          <textarea id='ticketTransitionNote' maxlength='4000' required placeholder='Describe the investigation, action taken, or reason for this status change.'></textarea>
+          <p class='small'>Required for the permanent administrator activity record. This note is not shown to the requester.</p>
+        </div>
+        <div id='ticketResolutionCategoryGroup' class='form-group hidden'>
+          <label for='ticketResolutionCategory'>Resolution category *</label>
+          <select id='ticketResolutionCategory'>
+            <option value=''>Select a category</option>
+            <option>Configuration Change</option><option>Software Fix</option><option>Hardware Repair</option>
+            <option>Access Restored</option><option>Network Fix</option><option>User Guidance</option>
+            <option>Workaround</option><option>No Fault Found</option><option>Other</option>
+          </select>
+        </div>
+        <div class='form-group'>
+          <label for='ticketRequesterMessage'>Requester-visible update <span id='ticketRequesterMessageRequired'></span></label>
+          <textarea id='ticketRequesterMessage' maxlength='4000' placeholder='Explain progress or the verified resolution in clear language for the requester.'></textarea>
+          <p class='small'>A requester-visible resolution is required when resolving a ticket.</p>
+        </div>
+        <label class='ticket-notify-option'><input id='ticketNotifyRequester' type='checkbox' checked> Notify the requester</label>
+        <p id='ticketTransitionError' class='small text-danger' aria-live='polite'></p>
+        <div class='inline-actions ticket-transition-actions'>
+          <button id='cancelTicketTransitionBtn' class='btn btn-ghost' type='button'>Cancel</button>
+          <button id='submitTicketTransitionBtn' class='btn btn-primary' type='submit'>Save status update</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id='ticketAssignmentDialog' class='ticket-transition-dialog' aria-labelledby='ticketAssignmentTitle'>
+      <form id='ticketAssignmentForm' class='ticket-transition-form'>
+        <div class='card-head'>
+          <div>
+            <p class='page-kicker'>Ownership control</p>
+            <h3 id='ticketAssignmentTitle' class='section-title'>Manage ticket ownership</h3>
+            <p id='ticketAssignmentMeta' class='section-subtitle'></p>
+          </div>
+          <button id='closeTicketAssignmentBtn' class='btn btn-ghost icon-btn' type='button' aria-label='Close dialog'>×</button>
+        </div>
+        <input id='ticketAssignmentId' type='hidden'>
+        <input id='ticketAssignmentMode' type='hidden'>
+        <div id='ticketAssigneeGroup' class='form-group hidden'>
+          <label for='ticketAssigneeUserId'>Assign to *</label>
+          <select id='ticketAssigneeUserId'></select>
+        </div>
+        <div class='form-group'>
+          <label for='ticketAssignmentNote'>Reason *</label>
+          <textarea id='ticketAssignmentNote' maxlength='4000' required placeholder='Explain why this ticket is being released or reassigned.'></textarea>
+          <p class='small'>This reason is kept in the permanent ticket activity record.</p>
+        </div>
+        <p id='ticketAssignmentError' class='small text-danger' aria-live='polite'></p>
+        <div class='inline-actions ticket-transition-actions'>
+          <button id='cancelTicketAssignmentBtn' class='btn btn-ghost' type='button'>Cancel</button>
+          <button id='submitTicketAssignmentBtn' class='btn btn-primary' type='submit'>Save ownership change</button>
+        </div>
+      </form>
+    </dialog>
+    <section id='adminTicketAiPanel' class='card ai-ticket-assistance hidden' aria-live='polite'>
+      <div class='card-head'>
+        <div>
+          <p class='page-kicker'>Advisory workspace</p>
+          <h3 id='adminTicketAiTitle' class='section-title'>AI Ticket Assistance</h3>
+          <p id='adminTicketAiMeta' class='section-subtitle'>Select a ticket to generate a summary and resolution draft.</p>
+        </div>
+        <button id='generateTicketAiBtn' class='btn btn-primary' type='button'>Generate assistance</button>
+      </div>
+      <p id='adminTicketAiStatus' class='small'></p>
+      <section id='adminTicketSavedResolution' class='hidden'>
+        <h4>Saved reviewed resolution</h4>
+        <div id='adminTicketSavedResolutionText' class='ai-review-copy'></div>
+        <p id='adminTicketSavedResolutionMeta' class='small'></p>
+      </section>
+      <section class='ticket-activity-section'>
+        <h4>Ticket activity</h4>
+        <div id='adminTicketActivity' class='ticket-activity-list'><p class='small'>Loading activity…</p></div>
+      </section>
+      <div id='adminTicketAiResults' class='ai-ticket-assistance-results hidden'>
+        <section>
+          <h4>Ticket summary</h4>
+          <div id='adminTicketAiSummary' class='ai-review-copy'></div>
+        </section>
+        <section>
+          <h4>Troubleshooting checklist</h4>
+          <ul id='adminTicketAiChecklist' class='ai-checklist'></ul>
+        </section>
+        <section class='ai-resolution-editor'>
+          <label class='form-group' for='adminTicketAiDraft'>Editable resolution draft</label>
+          <textarea id='adminTicketAiDraft' rows='8'></textarea>
+          <p id='adminTicketAiAdvisory' class='small'></p>
+          <div class='inline-actions'>
+            <button id='saveTicketAiDraftBtn' class='btn btn-primary' type='button'>Save reviewed draft to ticket</button>
+            <button id='copyTicketAiDraftBtn' class='btn btn-ghost' type='button'>Copy reviewed draft</button>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+</div>
+<script src='/modules/sidebar/js/admin-shell.js'></script><script src='/modules/common/js/app.js'></script><script src='/modules/common/js/help.js'></script><script src='/modules/common/js/table-skeleton.js'></script><script src='/ticket-management/js/admin-ticket-management.js?v=owned-active-ai-v1'></script>
+</body></html>

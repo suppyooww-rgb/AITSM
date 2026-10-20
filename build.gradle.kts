@@ -13,7 +13,12 @@ dependencyCheck {
     scanBuildEnv = false
     scanConfigurations = listOf("compileClasspath", "runtimeClasspath")
     suppressionFile = "config/dependency-check-suppressions.xml"
-    System.getenv("NVD_API_KEY")?.takeIf { it.isNotBlank() }?.let { nvd.apiKey = it }
+    nvd {
+        // Use OWASP's daily NVD mirror to avoid API outages and rate limits.
+        // Analysis errors still fail the build; this only changes the data source.
+        datafeedUrl = "https://dependency-check.github.io/DependencyCheck_Builder/nvd_cache/nvdcve-{0}.json.gz"
+        validForHours = 24
+    }
 }
 
 group = "com.aitsm"

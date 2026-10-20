@@ -14,12 +14,10 @@ dependencyCheck {
     scanConfigurations = listOf("compileClasspath", "runtimeClasspath")
     suppressionFile = "config/dependency-check-suppressions.xml"
     nvd {
-        // Stay below NVD's request ceiling and reuse a successful database
-        // snapshot for one day. Update failures still fail the security job.
-        delay = 6000
-        maxRetryCount = 30
+        // Use OWASP's daily NVD mirror to avoid API outages and rate limits.
+        // Analysis errors still fail the build; this only changes the data source.
+        datafeedUrl = "https://dependency-check.github.io/DependencyCheck_Builder/nvd_cache/nvdcve-{0}.json.gz"
         validForHours = 24
-        System.getenv("NVD_API_KEY")?.takeIf { it.isNotBlank() }?.let { apiKey = it }
     }
 }
 

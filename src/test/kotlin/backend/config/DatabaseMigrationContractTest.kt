@@ -47,4 +47,17 @@ class DatabaseMigrationContractTest {
         assertTrue(Files.readString(Path.of("db/migrations/V019__repair_legacy_collector_and_sla_schema.sql")).contains("agent_version"))
         assertTrue(Files.readString(Path.of("db/migrations/V020__repair_legacy_collector_enrollment_schema.sql")).contains("collector_enrollment_codes"))
     }
+
+    @Test fun `release repair does not manage an existing legacy owned AI bridge table`() {
+        val migration = Files.readString(Path.of("db/migrations/V018__repair_skipped_release_schema.sql"))
+        val existenceCheck = migration.indexOf("IF to_regclass('public.ai_bridge_jobs') IS NULL THEN")
+        val tableCreation = migration.indexOf("CREATE TABLE ai_bridge_jobs")
+        val indexCreation = migration.indexOf("CREATE INDEX ai_bridge_jobs_status_idx")
+        val grant = migration.indexOf("GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE ai_bridge_jobs")
+
+        assertTrue(existenceCheck >= 0)
+        assertTrue(tableCreation > existenceCheck)
+        assertTrue(indexCreation > tableCreation)
+        assertTrue(grant > indexCreation)
+    }
 }

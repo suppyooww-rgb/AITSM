@@ -12,6 +12,11 @@ permissions:
 jobs:
   test-and-scan:
     runs-on: ubuntu-latest
+    # NVD updates are bandwidth-intensive. Run one update at a time so branch
+    # workflows share the external service fairly instead of competing for it.
+    concurrency:
+      group: dependency-vulnerability-scan-${{ github.repository }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
         with:
@@ -25,7 +30,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.gradle/dependency-check-data
-          key: dependency-check-${{ runner.os }}-${{ hashFiles('gradle.lockfile', 'build.gradle.kts') }}
+          # The cache format follows Dependency-Check 13, while the database
+          # contents are refreshed by its 24-hour validity policy.
+          key: dependency-check-${{ runner.os }}-v13
           restore-keys: |
             dependency-check-${{ runner.os }}-
       - name: Test and package
@@ -35,16 +42,10 @@ jobs:
         run: |
           find src/main/resources/static/frontend -name '*.js' -print0 |
             xargs -0 -n1 node --check
-      - name: Require NVD API key
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: test -n "$NVD_API_KEY"
       - name: Dependency vulnerability scan
-        # The NVD feed is external. Bound it so a stalled feed cannot leave a
-        # release indefinitely in progress; a timeout still fails the release.
-        timeout-minutes: 45
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        # OWASP's daily mirror avoids NVD API rate limits while keeping the
+        # security gate fail-closed and bounded.
+        timeout-minutes: 60
         run: ./gradlew dependencyCheckAnalyze
       - name: Upload dependency-check report
         if: always()

@@ -13,7 +13,14 @@ dependencyCheck {
     scanBuildEnv = false
     scanConfigurations = listOf("compileClasspath", "runtimeClasspath")
     suppressionFile = "config/dependency-check-suppressions.xml"
-    System.getenv("NVD_API_KEY")?.takeIf { it.isNotBlank() }?.let { nvd.apiKey = it }
+    nvd {
+        // Stay below NVD's request ceiling and reuse a successful database
+        // snapshot for one day. Update failures still fail the security job.
+        delay = 6000
+        maxRetryCount = 30
+        validForHours = 24
+        System.getenv("NVD_API_KEY")?.takeIf { it.isNotBlank() }?.let { apiKey = it }
+    }
 }
 
 group = "com.aitsm"

@@ -12,6 +12,11 @@ permissions:
 jobs:
   test-and-scan:
     runs-on: ubuntu-latest
+    # NVD updates are bandwidth-intensive. Run one update at a time so branch
+    # workflows share the external service fairly instead of competing for it.
+    concurrency:
+      group: dependency-vulnerability-scan-${{ github.repository }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
         with:
@@ -42,7 +47,8 @@ jobs:
       - name: Dependency vulnerability scan
         # The NVD feed is external. Bound it so a stalled feed cannot leave a
         # release indefinitely in progress; a timeout still fails the release.
-        timeout-minutes: 45
+        # Full feed synchronization can take longer during NVD peak periods.
+        timeout-minutes: 60
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: ./gradlew dependencyCheckAnalyze

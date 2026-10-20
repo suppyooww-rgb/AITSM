@@ -36,6 +36,8 @@ class DatabaseMigrationContractTest {
         assertTrue(workflow.contains("AI_PROVIDER"))
         assertTrue(workflow.contains("GEMINI_MODEL"))
         assertTrue(workflow.contains("GEMINI_API_KEY"))
+        assertTrue(workflow.contains("LEGACY_AI_SECRET_VARS"))
+        assertTrue(workflow.contains("--remove-secrets"))
         assertTrue(workflow.contains("OLLAMA_MODEL=qwen3:8b"))
         assertTrue(workflow.contains("LEGACY_AI_ENV_COUNT"))
         assertTrue(workflow.indexOf("LEGACY_AI_ENV_COUNT") < workflow.indexOf("CANDIDATE_URL"))

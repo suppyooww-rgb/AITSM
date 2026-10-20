@@ -107,10 +107,16 @@ jobs:
         id: candidate
         run: |
           CURRENT_REVISION="$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(status.latestReadyRevisionName)')"
-          LEGACY_AI_ENV_VARS="$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format=json | jq -r '[.spec.template.spec.containers[0].env[]?.name | select(. == "AI_PROVIDER" or . == "GEMINI_MODEL" or . == "GEMINI_API_KEY")] | join(",")')"
-          LEGACY_AI_REMOVAL=()
+          SERVICE_JSON="$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format=json)"
+          LEGACY_AI_ENV_VARS="$(jq -r '[.spec.template.spec.containers[0].env[]? | select(.name == "AI_PROVIDER" or .name == "GEMINI_MODEL" or .name == "GEMINI_API_KEY") | select(.valueFrom.secretKeyRef? == null) | .name] | join(",")' <<< "$SERVICE_JSON")"
+          LEGACY_AI_SECRET_VARS="$(jq -r '[.spec.template.spec.containers[0].env[]? | select(.name == "AI_PROVIDER" or .name == "GEMINI_MODEL" or .name == "GEMINI_API_KEY") | select(.valueFrom.secretKeyRef? != null) | .name] | join(",")' <<< "$SERVICE_JSON")"
+          LEGACY_AI_ENV_REMOVAL=()
+          LEGACY_AI_SECRET_REMOVAL=()
           if [[ -n "$LEGACY_AI_ENV_VARS" ]]; then
-            LEGACY_AI_REMOVAL=(--remove-env-vars "$LEGACY_AI_ENV_VARS")
+            LEGACY_AI_ENV_REMOVAL=(--remove-env-vars "$LEGACY_AI_ENV_VARS")
+          fi
+          if [[ -n "$LEGACY_AI_SECRET_VARS" ]]; then
+            LEGACY_AI_SECRET_REMOVAL=(--remove-secrets "$LEGACY_AI_SECRET_VARS")
           fi
           gcloud run deploy "$SERVICE_NAME" \
             --project "$PROJECT_ID" \
@@ -119,7 +125,8 @@ jobs:
             --no-traffic \
             --tag candidate \
             --update-env-vars "DB_MIGRATE_ON_START=true,DB_MIGRATION_BASELINE=12,NOTIFICATION_RETENTION_DAYS=$RETENTION_DAYS,COLLECTOR_INSTALLER_URL=$COLLECTOR_URL,COLLECTOR_INSTALLER_SHA256=$COLLECTOR_SHA256,OLLAMA_MODEL=qwen3:8b" \
-            "${LEGACY_AI_REMOVAL[@]}" \
+            "${LEGACY_AI_ENV_REMOVAL[@]}" \
+            "${LEGACY_AI_SECRET_REMOVAL[@]}" \
             --labels "managed-by=github-actions,git-sha=$GITHUB_SHA" \
             --quiet
           NEW_REVISION="$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(status.latestCreatedRevisionName)')"

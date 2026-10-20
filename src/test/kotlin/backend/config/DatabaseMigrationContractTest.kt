@@ -5,6 +5,7 @@ import java.nio.file.Path
 import kotlin.io.path.name
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DatabaseMigrationContractTest {
@@ -35,6 +36,8 @@ class DatabaseMigrationContractTest {
         assertTrue(workflow.contains("AI_PROVIDER"))
         assertTrue(workflow.contains("GEMINI_MODEL"))
         assertTrue(workflow.contains("GEMINI_API_KEY"))
+        assertTrue(workflow.contains("LEGACY_AI_SECRET_VARS"))
+        assertTrue(workflow.contains("--remove-secrets"))
         assertTrue(workflow.contains("OLLAMA_MODEL=qwen3:8b"))
         assertTrue(workflow.contains("LEGACY_AI_ENV_COUNT"))
         assertTrue(workflow.indexOf("LEGACY_AI_ENV_COUNT") < workflow.indexOf("CANDIDATE_URL"))
@@ -59,5 +62,16 @@ class DatabaseMigrationContractTest {
         assertTrue(tableCreation > existenceCheck)
         assertTrue(indexCreation > tableCreation)
         assertTrue(grant > indexCreation)
+    }
+
+    @Test fun `only the known historical V018 checksum is accepted`() {
+        val historical = "ca5f39f9c448bf5a6b006769dba6e6eb9a6563d3da971246371855be88f3a9d5"
+        val current = "6ba89d34c88a3e0aae0509bf5dff60fd810bf7ee4cf6f57063157048e9a3a7c0"
+
+        assertTrue(DatabaseMigrator.isChecksumCompatible(18, historical, current))
+        assertTrue(DatabaseMigrator.isChecksumCompatible(18, current, current))
+        assertTrue(DatabaseMigrator.isChecksumCompatible(18, "baseline", current))
+        assertFalse(DatabaseMigrator.isChecksumCompatible(17, historical, current))
+        assertFalse(DatabaseMigrator.isChecksumCompatible(18, "unexpected", current))
     }
 }

@@ -7,6 +7,11 @@ import java.time.LocalDateTime
 
 object DatabaseMigrator {
     private const val LOCK_ID = 4_149_453_877L
+    private val compatibleMigrationChecksums = mapOf(
+        // V018 originally touched an existing legacy-owned AI bridge table.
+        // Production recorded this checksum before the ownership-safe repair.
+        18 to setOf("ca5f39f9c448bf5a6b006769dba6e6eb9a6563d3da971246371855be88f3a9d5")
+    )
 
     fun migrate() {
         val url = requireNotNull(Env.get("DB_URL")) { "DB_URL is required for database migrations" }
@@ -97,7 +102,7 @@ object DatabaseMigrator {
             statement.executeQuery().use { result -> if (result.next()) result.getString(1) else null }
         }
         if (recordedChecksum != null) {
-            require(recordedChecksum == "baseline" || recordedChecksum == migration.checksum) {
+            require(isChecksumCompatible(migration.version, recordedChecksum, migration.checksum)) {
                 "Migration V${migration.version} checksum changed after it was applied"
             }
             return
@@ -141,6 +146,9 @@ object DatabaseMigrator {
 
     private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
+
+    internal fun isChecksumCompatible(version: Int, recorded: String, current: String): Boolean =
+        recorded == "baseline" || recorded == current || compatibleMigrationChecksums[version]?.contains(recorded) == true
 
     private data class Migration(val version: Int, val name: String, val checksum: String, val sql: String)
 }

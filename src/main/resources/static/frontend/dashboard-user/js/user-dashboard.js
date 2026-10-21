@@ -1,5 +1,17 @@
+function normalizeUserTicketStatus(status) {
+  const normalized = String(status || '').trim().replaceAll('_', ' ').toLowerCase();
+  if (normalized === 'pending') return 'in progress';
+  if (normalized === 'cancelled' || normalized === 'canceled') return 'closed';
+  return normalized;
+}
+
+function userTicketStatusLabel(status) {
+  const normalized = normalizeUserTicketStatus(status);
+  return normalized ? normalized.replace(/\b\w/g, char => char.toUpperCase()) : 'Unknown';
+}
+
 function badgeClassForStatus(status) {
-  const normalized = (status || '').toLowerCase();
+  const normalized = normalizeUserTicketStatus(status);
   if (normalized === 'open') return 'open';
   if (normalized === 'in progress') return 'in-progress';
   if (normalized === 'resolved') return 'resolved';
@@ -22,15 +34,18 @@ function renderUserSummary(tickets) {
   if (!el) return;
 
   const safeTickets = Array.isArray(tickets) ? tickets : [];
-  const open = safeTickets.filter(t => t.status === 'Open').length;
-  const inProgress = safeTickets.filter(t => t.status === 'In Progress').length;
-  const resolved = safeTickets.filter(t => t.status === 'Resolved').length;
+  const normalized = safeTickets.map(ticket => normalizeUserTicketStatus(ticket.status));
+  const open = normalized.filter(status => status === 'open').length;
+  const inProgress = normalized.filter(status => status === 'in progress').length;
+  const resolved = normalized.filter(status => status === 'resolved').length;
+  const closed = normalized.filter(status => status === 'closed').length;
 
   const cards = [
     ['◧', 'Total Tickets', safeTickets.length, 'All tickets you submitted'],
     ['◍', 'Open', open, 'Awaiting assignment or triage'],
     ['◔', 'In Progress', inProgress, 'Currently worked by support'],
-    ['✓', 'Resolved', resolved, 'Completed requests']
+    ['✓', 'Resolved', resolved, 'Waiting for your confirmation'],
+    ['●', 'Closed', closed, 'Completed and closed requests']
   ];
 
   el.innerHTML = cards.map(([icon, label, value, hint]) => `
@@ -56,7 +71,7 @@ function renderRecentTickets(tickets) {
       <td><a class='ticket-link' href='${userTicketHref(t.id)}'>#${Number(t.id)}</a></td>
       <td><a class='ticket-link ticket-link-title' href='${userTicketHref(t.id)}' title='${aitsmEscapeHtml(t.title || '-')}'>${aitsmEscapeHtml(t.title || '-')}</a></td>
       <td>${aitsmEscapeHtml(t.priority || '-')}</td>
-      <td><span class='badge ${badgeClassForStatus(t.status)}'>${aitsmEscapeHtml(t.status || 'Unknown')}</span></td>
+      <td><span class='badge ${badgeClassForStatus(t.status)}'>${aitsmEscapeHtml(userTicketStatusLabel(t.status))}</span></td>
       <td>${aitsmEscapeHtml(formatDateTime(t.updatedAt))}</td>
     </tr>
   `).join('');

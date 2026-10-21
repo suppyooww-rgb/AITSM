@@ -27,6 +27,7 @@ function adminShellEscape(value) {
 }
 
 function adminNavItems() {
+  const superAdmin = String(window.currentUser?.role || '').toUpperCase() === 'SUPERADMIN';
   return [
     { section: 'Operations', items: [
       { page: 'dashboard-admin', href: '/dashboard-admin', icon: 'overview', label: 'Overview' },
@@ -36,7 +37,7 @@ function adminNavItems() {
       { page: 'knowledge', href: '/knowledge', icon: 'knowledge', label: 'Knowledge Base' }
     ]},
     { section: 'System', items: [
-      { page: 'settings', href: '/settings', icon: 'settings', label: 'Settings' },
+      ...(superAdmin ? [{ page: 'settings', href: '/settings', icon: 'settings', label: 'Settings' }] : []),
       { page: 'assets', href: '/assets', icon: 'assets', label: 'Asset Management' },
       { page: 'user-management', href: '/user-management', icon: 'users', label: 'User Management' },
       { page: 'colleagues', href: '/colleagues', icon: 'users', label: 'Colleagues & Chat' }

@@ -78,11 +78,22 @@ function renderRequestedTicketDetails(tickets) {
   document.getElementById('selectedTicketTitle').textContent = `Ticket #${ticket.id}: ${ticket.title}`;
   document.getElementById('selectedTicketMeta').textContent = `${ticket.status} • ${ticket.priority} • ${ticket.category}`;
   document.getElementById('selectedTicketDescription').textContent = ticket.description || 'No description provided.';
+  loadTicketAttachments(ticket.id);
   document.getElementById('selectedTicketResolution').textContent = ticket.reviewedResolution || 'No reviewed resolution has been posted yet.';
   document.getElementById('selectedTicketResolutionMeta').textContent = ticket.resolutionUpdatedAt
     ? `Last updated ${parseDate(ticket.resolutionUpdatedAt)?.toLocaleString() || ticket.resolutionUpdatedAt}.`
     : '';
   loadMyTicketHistory(ticket.id);
+}
+
+async function loadTicketAttachments(ticketId) {
+  const host = document.getElementById('selectedTicketAttachments');
+  if (!host) return;
+  try {
+    const attachments = await window.aitsmFetchJson(`/api/tickets/${ticketId}/attachments`);
+    if (!attachments.length) { host.innerHTML = '<p class="small">No screenshots attached.</p>'; return; }
+    host.innerHTML = attachments.map(item => `<a class='card' style='padding:8px;width:170px' href='${item.downloadUrl}' target='_blank' rel='noopener'><img src='${item.downloadUrl}' alt='${escapeHtml(item.originalName)}' style='width:100%;height:100px;object-fit:cover;border-radius:8px'><span class='small'>${escapeHtml(item.originalName)}</span></a>`).join('');
+  } catch (error) { host.innerHTML = `<p class='small text-danger'>${escapeHtml(error.message)}</p>`; }
 }
 
 function userHistoryStatus(value) {

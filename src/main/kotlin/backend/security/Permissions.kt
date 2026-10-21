@@ -13,7 +13,13 @@ object PermissionMatrix {
     private val endUser = setOf(Permission.TICKET_CREATE)
     private val support = endUser + setOf(Permission.TICKET_READ_ALL, Permission.TICKET_MANAGE, Permission.USER_READ)
     private val asset = setOf(Permission.ASSET_READ, Permission.ASSET_MANAGE)
-    private val admin = Permission.entries.toSet() - Permission.AUDIT_READ
+    // Operational administrators can run support workflows, but they cannot
+    // change trust boundaries, roles, security policy, or AI configuration.
+    private val admin = setOf(
+        Permission.TICKET_CREATE, Permission.TICKET_READ_ALL, Permission.TICKET_MANAGE,
+        Permission.USER_READ, Permission.USER_MANAGE, Permission.USER_INVITE,
+        Permission.ASSET_READ, Permission.ASSET_MANAGE, Permission.KNOWLEDGE_MANAGE
+    )
 
     fun permissions(role: UserRole): Set<Permission> = when (role) {
         UserRole.SUPERADMIN -> Permission.entries.toSet()

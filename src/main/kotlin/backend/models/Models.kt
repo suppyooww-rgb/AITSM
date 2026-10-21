@@ -63,6 +63,7 @@ data class User(
     val role: UserRole,
     val emailVerified: Boolean = false,
     val accountState: AccountState = AccountState.PENDING_VERIFICATION,
+    val mustChangePassword: Boolean = false,
     val createdAt: String
 )
 
@@ -193,6 +194,16 @@ data class Ticket(
 )
 @Serializable data class TicketResolutionUpdate(val resolution: String)
 @Serializable data class TicketAssignmentUpdate(val assigneeUserId: Int? = null, val note: String? = null)
+@Serializable data class TicketAttachment(
+    val id: String,
+    val ticketId: Int,
+    val originalName: String,
+    val contentType: String,
+    val sizeBytes: Int,
+    val uploadedBy: Int,
+    val createdAt: String,
+    val downloadUrl: String
+)
 @Serializable data class TicketHistoryEvent(
     val status: String,
     val previousStatus: String? = null,

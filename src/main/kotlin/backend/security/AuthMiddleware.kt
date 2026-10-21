@@ -90,6 +90,11 @@ fun Application.configureSecurityBoundary(sessions: SessionService) {
                 ?.let { call.attributes.put(PrincipalKey, it) }
         }
         val principal = call.principal()
+        if (principal?.user?.mustChangePassword == true && path.startsWith("/api/") && !isPasswordChangePath(path)) {
+            call.response.headers.append(HttpHeaders.CacheControl, "no-store, max-age=0")
+            call.respond(HttpStatusCode.Forbidden, ApiErrorResponse(403, "Password change required before continuing"))
+            finish(); return@intercept
+        }
         if (principal != null && !principal.mfaComplete && !isMfaRecoveryPath(path)) {
             call.response.headers.append(HttpHeaders.CacheControl, "no-store, max-age=0")
             call.response.headers.append(HttpHeaders.Pragma, "no-cache")
@@ -146,9 +151,13 @@ internal fun hasLegacyIdentityHeaders(headers: Headers): Boolean =
     headers["X-User-Id"] != null || headers["X-User-Role"] != null
 
 internal fun isMfaRecoveryPath(path: String): Boolean =
-    path in setOf("/", "/index.html", "/login", "/login.html", "/api/auth/login", "/api/auth/me", "/api/auth/logout") ||
+    path in setOf("/", "/index.html", "/login", "/login.html", "/api/auth/login", "/api/auth/me", "/api/auth/logout", "/api/users/me/password") ||
         path.startsWith("/index/") || path.startsWith("/login/") || path.startsWith("/shared/") ||
         path.startsWith("/modules/") || path.startsWith("/api/auth/mfa/")
+
+internal fun isPasswordChangePath(path: String): Boolean = path in setOf(
+    "/api/auth/me", "/api/auth/csrf-token", "/api/auth/logout", "/api/users/me/password"
+)
 
 internal fun isAuthenticationPage(path: String): Boolean =
     path in setOf(
@@ -203,7 +212,10 @@ private fun legacyAdminPermission(path: String, method: HttpMethod): Permission 
         if (method == HttpMethod.Get) Permission.ASSET_READ else Permission.ASSET_MANAGE
     path.startsWith("/api/knowledge") -> Permission.KNOWLEDGE_MANAGE
     path.startsWith("/api/analytics") -> Permission.TICKET_READ_ALL
-    path.startsWith("/api/profile-photo") || path.startsWith("/api/users") -> Permission.USER_MANAGE
-    path.startsWith("/api/ai/config") || path.startsWith("/api/ai/test") -> Permission.AI_CONFIGURE
+    path.startsWith("/api/profile-photo") -> Permission.USER_MANAGE
+    path.startsWith("/api/users/admin") || path.endsWith("/role") -> Permission.ROLE_MANAGE
+    path.startsWith("/api/users") -> if (method == HttpMethod.Get) Permission.USER_READ else Permission.USER_MANAGE
+    path.startsWith("/api/ai/tickets") -> Permission.TICKET_MANAGE
+    path.startsWith("/api/ai/config") || path.startsWith("/api/ai/bridge") || path.startsWith("/api/ai/test") -> Permission.AI_CONFIGURE
     else -> Permission.SECURITY_MANAGE
 }

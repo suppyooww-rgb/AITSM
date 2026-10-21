@@ -20,6 +20,11 @@ import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.ktor.http.content.PartData
+import io.ktor.http.content.forEachPart
+import io.ktor.utils.io.readRemaining
+import kotlinx.io.readByteArray
+import java.util.UUID
 
 private const val DEFAULT_LIMIT = 20
 private const val MAX_LIMIT = 100
@@ -70,6 +75,41 @@ fun Route.ticketRoutes(ticketService: TicketService, slaAutomation: SlaAutomatio
             if (!admin && ticket.userId != actorId) return@get call.respond(HttpStatusCode.NotFound)
             val history = ticketService.history(id)
             call.respond(if (admin) history else history.map { it.copy(note = null) })
+        }
+        get("/{id}/attachments") {
+            if (!call.requireAuthenticated()) return@get
+            val actorId = call.userId() ?: return@get call.respond(HttpStatusCode.Unauthorized)
+            val id = call.parameters["id"]?.toIntOrNull() ?: return@get call.respond(HttpStatusCode.BadRequest)
+            call.respond(ticketService.attachments(id, actorId, call.userRole()))
+        }
+        post("/{id}/attachments") {
+            if (!call.requireAuthenticated()) return@post
+            val actorId = call.userId() ?: return@post call.respond(HttpStatusCode.Unauthorized)
+            val id = call.parameters["id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
+            var filename: String? = null
+            var declaredType: String? = null
+            var bytes = byteArrayOf()
+            call.receiveMultipart().forEachPart { part ->
+                if (part is PartData.FileItem && part.name == "image") {
+                    filename = part.originalFileName
+                    declaredType = part.contentType?.toString()
+                    bytes = part.provider().readRemaining(5L * 1024 * 1024 + 1).readByteArray()
+                }
+                part.dispose()
+            }
+            call.respond(HttpStatusCode.Created, ticketService.addAttachment(id, actorId, call.userRole(), filename, declaredType, bytes))
+        }
+        get("/{id}/attachments/{attachmentId}") {
+            if (!call.requireAuthenticated()) return@get
+            val actorId = call.userId() ?: return@get call.respond(HttpStatusCode.Unauthorized)
+            val id = call.parameters["id"]?.toIntOrNull() ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val attachmentId = runCatching { UUID.fromString(call.parameters["attachmentId"]) }.getOrNull()
+                ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val attachment = ticketService.attachment(id, attachmentId, actorId, call.userRole())
+                ?: return@get call.respond(HttpStatusCode.NotFound)
+            call.response.headers.append(HttpHeaders.ContentDisposition, "inline; filename=\"${attachment.metadata.originalName.replace("\"", "")}\"")
+            call.response.headers.append(HttpHeaders.CacheControl, "private, max-age=300")
+            call.respondBytes(attachment.bytes, ContentType.parse(attachment.metadata.contentType))
         }
         put("/{id}") {
             if (!call.requireAuthenticated()) return@put

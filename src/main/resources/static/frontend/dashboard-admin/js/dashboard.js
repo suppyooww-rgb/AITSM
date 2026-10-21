@@ -346,14 +346,16 @@ function renderMetricCards() {
 
   const resolvedCount = tickets.filter((ticket) => {
     const status = normalizeTicketStatus(ticket.status);
-    return status === 'resolved' || status === 'closed';
+    return status === 'resolved';
   }).length;
+  const closedCount = tickets.filter((ticket) => normalizeTicketStatus(ticket.status) === 'closed').length;
 
   const cards = [
     ['TS', 'Total Assets', Number(inventory.total || 0), 'Registered inventory devices'],
     ['DD', 'Discoverable Devices', Number(monitorSummary.totalDiscovered || 0), 'LAN devices currently visible'],
     ['AT', 'Active Tickets', activeCount, 'Open and in-progress requests'],
-    ['RC', 'Resolved Tickets', resolvedCount, 'Resolved and closed requests'],
+    ['RC', 'Resolved Tickets', resolvedCount, 'Awaiting requester confirmation'],
+    ['CC', 'Closed Tickets', closedCount, 'Completed and closed requests'],
     ['TC', 'Telemetry Coverage', `${Number(monitorSummary.telemetryAvailableDevices || 0)}/${Number(monitorSummary.totalDiscovered || 0)}`, 'Devices with telemetry stream'],
     ['CL', 'Collector Health', String(monitorSummary.collectorState || 'NOT_ENROLLED').replaceAll('_', ' '), `Last seen ${formatDateTime(monitorSummary.collectorLastSeenAt)}`],
     ['UP', 'Telemetry Updated', monitorSummary.timestamp ? formatDateTime(monitorSummary.timestamp) : 'Never', 'Authoritative server receipt time']

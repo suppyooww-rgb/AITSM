@@ -33,6 +33,7 @@ import backend.security.requirePermission
 import backend.security.Permission
 import backend.security.SessionCookies
 import backend.security.userId
+import backend.security.userRole
 import backend.security.principal
 import backend.security.requireReauthentication
 import backend.security.isAdminPortalRole
@@ -221,18 +222,19 @@ fun Route.authRoutes(authService: AuthService, sessions: SessionService, invitat
         }
         put("/me/password") {
             val actor = call.userId() ?: return@put call.respond(HttpStatusCode.Unauthorized)
+            val mfaComplete = call.principal()?.mfaComplete ?: true
             val req = call.receive<ChangeOwnPasswordRequest>()
             val updated = authService.changeOwnPassword(actor, req.currentPassword, req.newPassword, req.confirmPassword)
-            call.establishSession(sessions, actor)
+            call.establishSession(sessions, actor, mfaComplete)
             call.respond(mapOf("message" to "Password changed successfully", "user" to updated))
         }
 
         get {
-            if (!call.requireRole(UserRole.ADMIN)) return@get
+            if (!call.requirePermission(Permission.USER_READ)) return@get
             call.respond(authService.listUsers())
         }
         put("/{id}/role") {
-            if (!call.requireRole(UserRole.ADMIN)) return@put
+            if (!call.requirePermission(Permission.ROLE_MANAGE)) return@put
             if (!call.requireReauthentication(reauthentication, ReauthScope.ADMIN_ACCESS)) return@put
             val id = call.parameters["id"]?.toIntOrNull() ?: return@put call.respond(HttpStatusCode.BadRequest)
             val req = call.receive<RoleUpdateRequest>()
@@ -243,6 +245,10 @@ fun Route.authRoutes(authService: AuthService, sessions: SessionService, invitat
             if (!call.requireRole(UserRole.ADMIN)) return@put
             if (!call.requireReauthentication(reauthentication, ReauthScope.ADMIN_ACCESS)) return@put
             val id = call.parameters["id"]?.toIntOrNull() ?: return@put call.respond(HttpStatusCode.BadRequest)
+            val target = authService.currentUser(id)
+            if (isAdminPortalRole(target.role) && call.userRole() != UserRole.SUPERADMIN) {
+                return@put call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Only a Super Admin can reset an administrator password"))
+            }
             val req = call.receive<PasswordResetRequest>()
             val updated = authService.resetUserPassword(id, req.newPassword, req.confirmPassword, call.userId())
             call.respond(UserActionResponse("Password reset successful", updated))
@@ -251,6 +257,10 @@ fun Route.authRoutes(authService: AuthService, sessions: SessionService, invitat
             if (!call.requirePermission(Permission.USER_MANAGE)) return@put
             if (!call.requireReauthentication(reauthentication, ReauthScope.ADMIN_ACCESS)) return@put
             val id = call.parameters["id"]?.toIntOrNull() ?: return@put call.respond(HttpStatusCode.BadRequest)
+            val target = authService.currentUser(id)
+            if (isAdminPortalRole(target.role) && call.userRole() != UserRole.SUPERADMIN) {
+                return@put call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Only a Super Admin can change an administrator account"))
+            }
             val req = call.receive<AccountStateUpdateRequest>()
             call.respond(UserActionResponse("Account state updated", authService.updateAccountState(id, req.state, call.userId())))
         }
@@ -270,6 +280,7 @@ fun Route.authRoutes(authService: AuthService, sessions: SessionService, invitat
             if (!call.requireReauthentication(reauthentication, ReauthScope.ADMIN_ACCESS)) return@put
             val id = call.parameters["id"]?.toIntOrNull() ?: return@put call.respond(HttpStatusCode.BadRequest)
             val req = call.receive<ExternalAccountApprovalRequest>()
+            if (req.role != UserRole.END_USER && !call.requirePermission(Permission.ROLE_MANAGE)) return@put
             val updated = authService.approveExternalAccount(id, req.department, req.role, call.userId())
             call.respond(UserActionResponse("Account access granted", updated))
         }
@@ -277,17 +288,21 @@ fun Route.authRoutes(authService: AuthService, sessions: SessionService, invitat
             if (!call.requireRole(UserRole.ADMIN)) return@delete
             if (!call.requireReauthentication(reauthentication, ReauthScope.ACCOUNT_DELETE)) return@delete
             val id = call.parameters["id"]?.toIntOrNull() ?: return@delete call.respond(HttpStatusCode.BadRequest)
+            val target = authService.currentUser(id)
+            if (isAdminPortalRole(target.role) && call.userRole() != UserRole.SUPERADMIN) {
+                return@delete call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Only a Super Admin can delete an administrator account"))
+            }
             val deleted = authService.deleteUserAccount(id, call.userId())
             call.respond(UserActionResponse("User deleted", deleted))
         }
         route("/admin") {
             post("/eligibility") {
-                if (!call.requireRole(UserRole.ADMIN)) return@post
+                if (!call.requirePermission(Permission.ROLE_MANAGE)) return@post
                 val req = call.receive<AdminEligibilityRequest>()
                 call.respond(authService.adminGrantEligibility(req.targetEmail))
             }
             post("/verify") {
-                if (!call.requireRole(UserRole.ADMIN)) return@post
+                if (!call.requirePermission(Permission.ROLE_MANAGE)) return@post
                 val actor = call.userId() ?: return@post call.respond(HttpStatusCode.Unauthorized)
                 val req = call.receive<AdminSensitiveVerifyRequest>()
                 val (ok, token, meta) = authService.verifySensitiveAction(actor, req.password)
@@ -308,7 +323,7 @@ fun Route.authRoutes(authService: AuthService, sessions: SessionService, invitat
                 )
             }
             post("/grant") {
-                if (!call.requireRole(UserRole.ADMIN)) return@post
+                if (!call.requirePermission(Permission.ROLE_MANAGE)) return@post
                 if (!call.requireReauthentication(reauthentication, ReauthScope.ADMIN_ACCESS)) return@post
                 val actor = call.userId() ?: return@post call.respond(HttpStatusCode.Unauthorized)
                 val req = call.receive<AdminGrantRequest>()

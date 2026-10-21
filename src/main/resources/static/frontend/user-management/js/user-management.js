@@ -271,13 +271,15 @@ function renderUserManagementRows() {
   rows.innerHTML = users.map((u) => {
     const currentUserId = Number(window.currentUser?.id || 0);
     const canChange = u.role !== 'superadmin' && u.id !== currentUserId;
+    const superAdmin = currentRole() === 'superadmin';
     const encodedEmail = encodeURIComponent(u.email || '');
     const needsAccessProvisioning = !u.emailVerified || String(u.department || '').trim().toLowerCase() === 'pending approval';
     const menuItems = [
       needsAccessProvisioning ? `<button type='button' ${canChange ? '' : 'disabled'} onclick='openAccessApprovalModal(${u.id}, decodeURIComponent("${encodedEmail}"))'>Grant access</button>` : '',
-      normalizeRole(u.role) === 'admin'
+      superAdmin && normalizeRole(u.role) === 'admin'
         ? `<button type='button' ${canChange ? '' : 'disabled'} onclick='changeRoleFromUserManagement(${u.id}, "END_USER")'>Set as end-user</button>`
-        : `<button type='button' ${canChange ? '' : 'disabled'} onclick='openAddAdminFromUserManagement(decodeURIComponent("${encodedEmail}"))'>Grant admin role</button>`,
+        : superAdmin && normalizeRole(u.role) === 'end-user'
+          ? `<button type='button' ${canChange ? '' : 'disabled'} onclick='openAddAdminFromUserManagement(decodeURIComponent("${encodedEmail}"))'>Grant admin role</button>` : '',
       !u.emailVerified
         ? `<button type='button' ${canChange ? '' : 'disabled'} onclick='setUserEmailApprovalFromUserManagement(${u.id}, true)'>Approve email for login</button>`
         : '',
@@ -308,6 +310,12 @@ async function loadUserManagement() {
   showTableSkeleton(rows, { rowCount: 6, columnCount: 5, hasActions: true });
 
   try {
+    const invitationAdminOption = document.querySelector('#invitationRole option[value="ADMIN"]');
+    const accessAdminOption = document.querySelector('#accessApprovalRole option[value="ADMIN"]');
+    if (currentRole() !== 'superadmin') {
+      invitationAdminOption?.remove();
+      accessAdminOption?.remove();
+    }
     userMgmtState.users = await fetchJsonOrThrow('/api/users');
     clearTableSkeleton(rows);
     renderUserManagementRows();

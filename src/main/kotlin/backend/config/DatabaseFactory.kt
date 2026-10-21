@@ -17,6 +17,7 @@ object UsersTable : Table("users") {
     val department = varchar("department", 120)
     val profilePhotoUrl = varchar("profile_photo_url", 500).nullable()
     val passwordHash = varchar("password_hash", 255)
+    val mustChangePassword = bool("must_change_password").default(false)
     val role = varchar("role", 20).index()
     val emailVerified = bool("email_verified").default(false)
     val accountState = varchar("account_state", 32).default("PENDING_VERIFICATION").index()
@@ -318,6 +319,18 @@ object SlaRiskPredictionsTable : Table("sla_risk_predictions") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object TicketAttachmentsTable : Table("ticket_attachments") {
+    val id = uuid("id")
+    val ticketId = integer("ticket_id").references(TicketsTable.id, onDelete = ReferenceOption.CASCADE).index()
+    val uploadedBy = integer("uploaded_by").references(UsersTable.id, onDelete = ReferenceOption.CASCADE).index()
+    val originalName = varchar("original_name", 180)
+    val contentType = varchar("content_type", 40)
+    val sizeBytes = integer("size_bytes")
+    val contentBase64 = text("content_base64")
+    val createdAt = datetime("created_at").index()
+    override val primaryKey = PrimaryKey(id)
+}
+
 object NotificationsTable : Table("notifications") {
     val id = integer("id").autoIncrement()
     val userId = integer("user_id").references(UsersTable.id, onDelete = ReferenceOption.CASCADE).index()
@@ -497,6 +510,7 @@ object DatabaseFactory {
                 DiscoveryRequestsTable,
                 TicketsTable,
                 TicketHistoryTable,
+                TicketAttachmentsTable,
                 SlaRiskPredictionsTable,
                 NotificationsTable,
                 SLAPoliciesTable,

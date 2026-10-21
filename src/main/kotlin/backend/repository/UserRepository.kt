@@ -257,7 +257,10 @@ class UserRepository {
 
     fun updateOwnPassword(userId: Int, passwordHash: String): User? = transaction {
         val row = UsersTable.selectAll().where { UsersTable.id eq userId }.singleOrNull() ?: return@transaction null
-        UsersTable.update({ UsersTable.id eq userId }) { it[UsersTable.passwordHash] = passwordHash }
+        UsersTable.update({ UsersTable.id eq userId }) {
+            it[UsersTable.passwordHash] = passwordHash
+            it[UsersTable.mustChangePassword] = false
+        }
         UsersTable.selectAll().where { UsersTable.id eq row[UsersTable.id] }.singleOrNull()?.let(::toUser)
     }
 
@@ -265,7 +268,10 @@ class UserRepository {
         val row = UsersTable.selectAll().where { UsersTable.id eq userId }.singleOrNull() ?: return@transaction null
         if (row[UsersTable.role] == UserRole.SUPERADMIN.name) return@transaction null
 
-        UsersTable.update({ UsersTable.id eq userId }) { it[UsersTable.passwordHash] = passwordHash }
+        UsersTable.update({ UsersTable.id eq userId }) {
+            it[UsersTable.passwordHash] = passwordHash
+            it[UsersTable.mustChangePassword] = true
+        }
         UsersTable.selectAll().where { UsersTable.id eq userId }.singleOrNull()?.let(::toUser)
     }
 
@@ -353,6 +359,7 @@ class UserRepository {
         role = UserRole.from(row[UsersTable.role]),
         emailVerified = row[UsersTable.emailVerified],
         accountState = AccountState.valueOf(row[UsersTable.accountState]),
+        mustChangePassword = row[UsersTable.mustChangePassword],
         createdAt = row[UsersTable.createdAt].toString()
     )
 

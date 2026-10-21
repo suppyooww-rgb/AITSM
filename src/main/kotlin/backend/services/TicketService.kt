@@ -13,6 +13,8 @@ import backend.repository.UserRepository
 import java.time.Duration
 import java.time.LocalDateTime
 import java.math.RoundingMode
+import java.nio.file.Paths
+import java.util.UUID
 
 class TicketService(
     private val repository: TicketRepository,
@@ -47,6 +49,25 @@ class TicketService(
     }
     fun get(id: Int): Ticket? = repository.get(id)?.let { enrichRisk(listOf(it)).first() }
     fun history(id: Int) = repository.history(id)
+    fun attachments(id: Int, actorId: Int, role: UserRole) = authorizedTicket(id, actorId, role).let { repository.attachments(id) }
+    fun attachment(id: Int, attachmentId: UUID, actorId: Int, role: UserRole): TicketRepository.AttachmentContent? {
+        authorizedTicket(id, actorId, role)
+        return repository.attachment(id, attachmentId)
+    }
+
+    fun addAttachment(id: Int, actorId: Int, role: UserRole, originalName: String?, declaredType: String?, bytes: ByteArray) =
+        authorizedTicket(id, actorId, role).let { ticket ->
+            require(ticket.userId == actorId) { "Only the requester can add screenshots to this ticket" }
+            require(repository.attachmentCount(id) < 5) { "A ticket can contain at most 5 images" }
+            require(bytes.isNotEmpty() && bytes.size <= 5 * 1024 * 1024) { "Images must be between 1 byte and 5 MB" }
+            val detected = detectImageType(bytes) ?: error("Only valid PNG, JPEG, and WebP images are accepted")
+            require(declaredType.isNullOrBlank() || declaredType.lowercase() == detected) { "File content does not match its declared image type" }
+            val cleanName = Paths.get(originalName ?: "screenshot").fileName.toString()
+                .replace(Regex("[^A-Za-z0-9._ -]"), "_").take(180).ifBlank { "screenshot.${detected.substringAfter('/')}" }
+            repository.addAttachment(id, actorId, cleanName, detected, bytes).also {
+                audit.log(actorId, "Attached an image to ticket #$id", "tickets")
+            }
+        }
     fun actorDisplayName(userId: Int, role: UserRole): String =
         users.findById(userId)?.let { "${it.fullName} (${role.asHeaderValue()})" } ?: "${role.asHeaderValue()}-$userId"
     fun allForAdvisory() = enrichRisk(repository.list(null, true, 500, 0).items)
@@ -105,6 +126,13 @@ class TicketService(
                 require(note != null && note.length >= 5) { "A work note of at least 5 characters is required for every administrator status change" }
                 require(note.length <= 4_000) { "Work note must not exceed 4,000 characters" }
                 require(userMessage == null || userMessage.length <= 4_000) { "Requester message must not exceed 4,000 characters" }
+                val allowedTransition = when (existing.status) {
+                    TicketStatus.OPEN -> status == TicketStatus.PENDING
+                    TicketStatus.PENDING -> status == TicketStatus.RESOLVED
+                    TicketStatus.RESOLVED -> status in setOf(TicketStatus.PENDING, TicketStatus.CLOSED)
+                    TicketStatus.CLOSED -> false
+                }
+                require(allowedTransition) { "Unsupported ticket transition: ${existing.status.name} to ${status.name}" }
                 if (status == TicketStatus.RESOLVED) {
                     require(userMessage != null && userMessage.length >= 10) { "A requester-visible resolution of at least 10 characters is required" }
                     require(resolutionCategory in resolutionCategories) { "Select a valid resolution category" }
@@ -280,6 +308,20 @@ class TicketService(
     private fun requireTicketOwner(ticket: Ticket, actorId: Int?) {
         require(ticket.assignedToUserId != null) { "Take this ticket before editing it" }
         require(ticket.assignedToUserId == actorId) { "This ticket is being handled by ${ticket.assignedTo ?: "another administrator"}" }
+    }
+
+    private fun authorizedTicket(id: Int, actorId: Int, role: UserRole): Ticket {
+        val ticket = repository.get(id) ?: error("Ticket not found")
+        val canReadAll = Permission.TICKET_READ_ALL in PermissionMatrix.permissions(role)
+        require(canReadAll || ticket.userId == actorId) { "Ticket not found" }
+        return ticket
+    }
+
+    private fun detectImageType(bytes: ByteArray): String? = when {
+        bytes.size >= 8 && bytes.copyOfRange(0, 8).contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)) -> "image/png"
+        bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte() -> "image/jpeg"
+        bytes.size >= 12 && String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF" && String(bytes, 8, 4, Charsets.US_ASCII) == "WEBP" -> "image/webp"
+        else -> null
     }
 
     private fun notifySuperAdminOverride(ticket: Ticket, actor: String, action: String) {

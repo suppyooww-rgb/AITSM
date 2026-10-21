@@ -13,6 +13,41 @@ function ensureActionMenuBackdrop() {
 }
 
 const FOLLOW_UP_HOURS = 24;
+let ticketImageFiles = [];
+
+function renderTicketImagePreviews() {
+  const host = document.getElementById('ticketImagePreviews');
+  if (!host) return;
+  host.innerHTML = '';
+  ticketImageFiles.forEach((file, index) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cssText = 'width:150px;padding:8px';
+    const image = document.createElement('img');
+    image.alt = `Preview of ${file.name}`;
+    image.src = URL.createObjectURL(file);
+    image.style.cssText = 'width:100%;height:90px;object-fit:cover;border-radius:8px';
+    image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true });
+    const name = document.createElement('div'); name.className = 'small'; name.textContent = file.name;
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn btn-ghost'; remove.textContent = 'Remove';
+    remove.addEventListener('click', () => { ticketImageFiles.splice(index, 1); renderTicketImagePreviews(); });
+    card.append(image, name, remove); host.appendChild(card);
+  });
+}
+
+function selectTicketImages(event) {
+  const chosen = Array.from(event.target.files || []);
+  const allowed = new Set(['image/png', 'image/jpeg', 'image/webp']);
+  const invalid = chosen.find(file => !allowed.has(file.type) || file.size <= 0 || file.size > 5 * 1024 * 1024);
+  if (invalid || chosen.length > 5) {
+    event.target.value = '';
+    ticketImageFiles = [];
+    renderTicketImagePreviews();
+    return setCreateTicketMessage('Select up to 5 valid PNG, JPEG, or WebP images, no larger than 5 MB each.', 'danger');
+  }
+  ticketImageFiles = chosen;
+  renderTicketImagePreviews();
+}
 
 function parseDate(v){ const d=new Date(v||''); return Number.isNaN(d.getTime()) ? null : d; }
 function hoursSince(v){ const d=parseDate(v); if(!d) return 999; return (Date.now()-d.getTime())/(1000*60*60); }
@@ -112,12 +147,27 @@ async function createTicket() {
       method: 'POST',
       body: JSON.stringify(body)
     });
+    const failures = [];
+    for (const file of ticketImageFiles) {
+      const form = new FormData(); form.append('image', file, file.name);
+      const upload = await fetch(`/api/tickets/${data.id}/attachments`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': decodeURIComponent(readCookie('aitsm_csrf')) }, body: form
+      });
+      if (!upload.ok) failures.push(file.name);
+    }
+    if (failures.length) {
+      setCreateTicketMessage(`Ticket #${data.id} was created, but these images were not uploaded: ${failures.join(', ')}. Your form has been preserved so you can retry from the ticket details.`, 'danger');
+      return;
+    }
     setCreateTicketMessage(`Ticket #${data.id} created successfully. Redirecting...`, 'success');
-    location.href = '/tickets';
+    location.href = `/tickets?ticketId=${encodeURIComponent(data.id)}`;
   } catch (error) {
     setCreateTicketMessage(error.message || 'Unable to create ticket', 'danger');
   }
 }
+
+document.addEventListener('DOMContentLoaded', () => document.getElementById('ticketImages')?.addEventListener('change', selectTicketImages), { once: true });
 
 function formatSla(ticket) {
   const status = String(ticket.status || '').toLowerCase();

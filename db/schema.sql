@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   department VARCHAR(120) NOT NULL,
   profile_photo_url VARCHAR(500),
   password_hash VARCHAR(255) NOT NULL,
+  must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
   role VARCHAR(20) NOT NULL DEFAULT 'end-user',
   email_verified BOOLEAN NOT NULL DEFAULT FALSE,
   verification_code VARCHAR(12),
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Safe to run for existing deployments as well.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_url VARCHAR(500);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS profile_photo_requests (
   id SERIAL PRIMARY KEY,
@@ -110,6 +112,18 @@ CREATE TABLE IF NOT EXISTS ticket_history (
     updated_by VARCHAR(150) NOT NULL,
   timestamp TIMESTAMP NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS ticket_attachments (
+  id UUID PRIMARY KEY,
+  ticket_id INT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  uploaded_by INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  original_name VARCHAR(180) NOT NULL,
+  content_type VARCHAR(40) NOT NULL,
+  size_bytes INT NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 5242880),
+  content_base64 TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ticket_attachments_ticket_id_idx ON ticket_attachments(ticket_id);
 
 CREATE TABLE IF NOT EXISTS notifications (
   id SERIAL PRIMARY KEY,

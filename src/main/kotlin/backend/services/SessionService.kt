@@ -143,5 +143,6 @@ private fun ResultRow.toUser() = User(
     company = this[UsersTable.company], department = this[UsersTable.department],
     profilePhotoUrl = this[UsersTable.profilePhotoUrl], role = UserRole.from(this[UsersTable.role]),
     emailVerified = this[UsersTable.emailVerified], accountState = AccountState.valueOf(this[UsersTable.accountState]),
+    mustChangePassword = this[UsersTable.mustChangePassword],
     createdAt = this[UsersTable.createdAt].toString()
 )

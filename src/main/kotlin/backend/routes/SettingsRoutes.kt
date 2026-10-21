@@ -4,6 +4,8 @@ import backend.models.AssetIpPrefixesRequest
 import backend.models.AssetIpPrefixesResponse
 import backend.models.UserRole
 import backend.security.requireRole
+import backend.security.requirePermission
+import backend.security.Permission
 import backend.security.requireReauthentication
 import backend.services.AssetDetectionService
 import backend.services.ReauthScope
@@ -23,12 +25,12 @@ import kotlinx.serialization.json.jsonPrimitive
 fun Route.settingsRoutes(assetDetectionService: AssetDetectionService, reauthentication: ReauthenticationService) {
     route("/settings") {
         get("/asset-ip-prefixes") {
-            if (!call.requireRole(UserRole.ADMIN)) return@get
+            if (!call.requirePermission(Permission.SECURITY_MANAGE)) return@get
             call.respond(AssetIpPrefixesResponse(prefixes = assetDetectionService.getPrefixes()))
         }
 
         post("/asset-ip-prefixes") {
-            if (!call.requireRole(UserRole.ADMIN)) return@post
+            if (!call.requirePermission(Permission.SECURITY_MANAGE)) return@post
             if (!call.requireReauthentication(reauthentication, ReauthScope.SECURITY_CONFIG)) return@post
             runCatching {
                 val rawBody = call.receiveText()

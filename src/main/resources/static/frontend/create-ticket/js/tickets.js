@@ -15,24 +15,33 @@ function ensureActionMenuBackdrop() {
 const FOLLOW_UP_HOURS = 24;
 let ticketImageFiles = [];
 
-function renderTicketImagePreviews() {
+async function renderTicketImagePreviews() {
   const host = document.getElementById('ticketImagePreviews');
   if (!host) return;
   host.innerHTML = '';
-  ticketImageFiles.forEach((file, index) => {
+  for (const [index, file] of ticketImageFiles.entries()) {
     const card = document.createElement('div');
     card.className = 'card';
     card.style.cssText = 'width:150px;padding:8px';
-    const image = document.createElement('img');
-    image.alt = `Preview of ${file.name}`;
-    image.src = URL.createObjectURL(file);
-    image.style.cssText = 'width:100%;height:90px;object-fit:cover;border-radius:8px';
-    image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true });
+    const canvas = document.createElement('canvas');
+    canvas.width = 140; canvas.height = 90;
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', `Preview of ${file.name}`);
+    canvas.style.cssText = 'width:100%;height:90px;border-radius:8px';
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.max(canvas.width / bitmap.width, canvas.height / bitmap.height);
+      const width = bitmap.width * scale; const height = bitmap.height * scale;
+      canvas.getContext('2d').drawImage(bitmap, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+      bitmap.close();
+    } catch {
+      canvas.getContext('2d').fillText('Preview unavailable', 10, 45);
+    }
     const name = document.createElement('div'); name.className = 'small'; name.textContent = file.name;
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn btn-ghost'; remove.textContent = 'Remove';
     remove.addEventListener('click', () => { ticketImageFiles.splice(index, 1); renderTicketImagePreviews(); });
-    card.append(image, name, remove); host.appendChild(card);
-  });
+    card.append(canvas, name, remove); host.appendChild(card);
+  }
 }
 
 function selectTicketImages(event) {

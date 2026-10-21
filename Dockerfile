@@ -5,7 +5,7 @@ COPY gradle ./gradle
 COPY gradlew gradlew.bat build.gradle.kts settings.gradle.kts gradle.properties gradle.lockfile ./
 COPY .env.example .gitignore ./
 COPY .github ./.github
-RUN chmod +x gradlew
+RUN sed -i 's/\r$//' gradlew && chmod +x gradlew
 COPY src ./src
 COPY db ./db
 COPY collector ./collector

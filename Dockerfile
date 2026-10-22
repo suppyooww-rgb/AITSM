@@ -9,6 +9,7 @@ RUN sed -i 's/\r$//' gradlew && chmod +x gradlew
 COPY src ./src
 COPY db ./db
 COPY collector ./collector
+RUN find db/migrations -type f -exec sed -i 's/\r$//' {} +
 RUN ./gradlew --no-daemon clean test buildFatJar
 
 FROM eclipse-temurin:21-jre-alpine

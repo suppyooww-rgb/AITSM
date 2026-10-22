@@ -15,6 +15,9 @@ class PlatformHardeningContractTest {
         assertTrue(repository.contains("mustChangePassword] = false"))
         assertTrue(boundary.contains("Password change required before continuing"))
         assertTrue(boundary.contains("/api/users/me/password"))
+        val routes = Files.readString(Path.of("src/main/kotlin/backend/routes/AuthRoutes.kt"))
+        assertTrue(routes.contains("UserActionResponse(\"Password changed successfully\", updated)"))
+        assertTrue(!routes.contains("mapOf(\"message\" to \"Password changed successfully\", \"user\" to updated)"))
     }
 
     @Test fun `ticket screenshots use authenticated validated database backed storage`() {

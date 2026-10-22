@@ -226,7 +226,7 @@ fun Route.authRoutes(authService: AuthService, sessions: SessionService, invitat
             val req = call.receive<ChangeOwnPasswordRequest>()
             val updated = authService.changeOwnPassword(actor, req.currentPassword, req.newPassword, req.confirmPassword)
             call.establishSession(sessions, actor, mfaComplete)
-            call.respond(mapOf("message" to "Password changed successfully", "user" to updated))
+            call.respond(UserActionResponse("Password changed successfully", updated))
         }
 
         get {

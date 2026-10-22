@@ -119,6 +119,47 @@ window.aitsmFetchAllPaginated = fetchAllPaginated;
 const reauthCache = new Map();
 let pendingReauthPassword = null;
 
+function enablePasswordVisibility(input) {
+  if (!input || input.dataset.passwordVisibility === 'enabled') return;
+  let field = input.closest('.password-field');
+  if (!field) {
+    field = document.createElement('div');
+    field.className = 'password-field';
+    input.parentNode?.insertBefore(field, input);
+    field.appendChild(input);
+  }
+
+  const toggleId = `${input.id || 'password'}VisibilityToggle`;
+  let toggle = field.querySelector('.password-toggle-btn');
+  if (!toggle) {
+    toggle = document.createElement('button');
+    toggle.id = toggleId;
+    toggle.className = 'password-toggle-btn';
+    toggle.type = 'button';
+    toggle.innerHTML = "<span class='password-toggle-icon password-toggle-show' aria-hidden='true'>👁</span><span class='password-toggle-icon password-toggle-hide hidden' aria-hidden='true'>🙈</span>";
+    field.appendChild(toggle);
+  }
+
+  const updateState = (visible) => {
+    input.type = visible ? 'text' : 'password';
+    toggle.setAttribute('aria-label', visible ? 'Hide password' : 'Show password');
+    toggle.setAttribute('title', visible ? 'Hide password' : 'Show password');
+    toggle.setAttribute('aria-pressed', String(visible));
+    toggle.querySelector('.password-toggle-show')?.classList.toggle('hidden', visible);
+    toggle.querySelector('.password-toggle-hide')?.classList.toggle('hidden', !visible);
+  };
+
+  updateState(false);
+  toggle.addEventListener('click', () => updateState(input.type === 'password'));
+  input.dataset.passwordVisibility = 'enabled';
+}
+
+function enablePasswordVisibilityFields(scope = document) {
+  scope.querySelectorAll("input[type='password']").forEach(enablePasswordVisibility);
+}
+
+window.aitsmEnablePasswordVisibilityFields = enablePasswordVisibilityFields;
+
 function ensureReauthModal() {
   if (document.getElementById('reauthModal')) return;
   const modal = document.createElement('div');
@@ -145,6 +186,7 @@ function ensureReauthModal() {
       </form>
     </section>`;
   document.body.appendChild(modal);
+  enablePasswordVisibilityFields(modal);
 
   document.getElementById('reauthForm')?.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -241,6 +283,7 @@ function requireTemporaryPasswordChange() {
       <div class='inline-actions'><button class='btn btn-primary' type='submit'>Change password</button><button class='btn btn-ghost' type='button' id='requiredPasswordLogout'>Sign out</button></div>
     </form></section>`;
   document.body.appendChild(modal);
+  enablePasswordVisibilityFields(modal);
   document.body.style.overflow = 'hidden';
   modal.querySelector('#requiredPasswordLogout').addEventListener('click', logout);
   modal.querySelector('#requiredPasswordForm').addEventListener('submit', async event => {
@@ -471,6 +514,7 @@ function ensurePasswordModal() {
       </form>
     </section>`;
   document.body.appendChild(modal);
+  enablePasswordVisibilityFields(modal);
 
   document.getElementById('passwordChangeForm')?.addEventListener('submit', submitPasswordChange);
   document.getElementById('passwordChangeCancel')?.addEventListener('click', closePasswordModal);
@@ -563,6 +607,7 @@ async function submitPasswordChange(event) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  enablePasswordVisibilityFields();
   await ensureSharedStylesheet();
   ensurePageSplash();
   await window.aitsmReady;

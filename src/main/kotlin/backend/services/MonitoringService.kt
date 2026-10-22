@@ -70,8 +70,8 @@ class MonitoringService(
     }
     fun createPackage(userId: Int, role: UserRole, request: CollectorPackageRequest) = run {
         val requestedScope = request.scope.trim().uppercase()
-        val admin = role in setOf(UserRole.ADMIN, UserRole.IT_ADMIN, UserRole.SUPERADMIN)
-        val scope = if (admin) requestedScope else "SELF"
+        val canUseLanScope = role == UserRole.SUPERADMIN
+        val scope = if (canUseLanScope) requestedScope else "SELF"
         require(scope in setOf("SELF", "LAN")) { "Collector scope must be SELF or LAN." }
         val site = request.siteId.trim().ifBlank { if (scope == "SELF") "self-device" else "company-lan" }
         val name = request.name.trim()
@@ -93,8 +93,8 @@ class MonitoringService(
     fun canDownloadPackage(code: String, userId: Int) = repository.enrollmentCodeBelongsTo(code.trim(), userId)
     fun canRepairCollector(rawId: String, userId: Int, role: UserRole, expectedScope: String? = null): Boolean {
         val id = runCatching { UUID.fromString(rawId) }.getOrNull()?.toString() ?: return false
-        val admin = role in setOf(UserRole.ADMIN, UserRole.IT_ADMIN, UserRole.SUPERADMIN)
-        val collector = (if (admin) collectors() else collectorsForUser(userId)).firstOrNull { it.collectorId == id }
+        val collector = (if (role == UserRole.SUPERADMIN) collectors() else collectorsForUser(userId))
+            .firstOrNull { it.collectorId == id }
             ?: return false
         return collector.state !in setOf("REVOKED", "ARCHIVED") &&
             (expectedScope == null || collector.scope == expectedScope)

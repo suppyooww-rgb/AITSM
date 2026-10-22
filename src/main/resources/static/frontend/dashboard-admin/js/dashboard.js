@@ -74,6 +74,132 @@ function fetchJsonOrThrow(url, options = {}) {
   return window.aitsmFetchJson(url, options);
 }
 
+let adminSelfCollectorRecords = new Map();
+
+async function downloadCollectorResponse(response, fallbackName = 'AITSMCollectorSetup.exe') {
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Installer download failed');
+  }
+  const disposition = response.headers.get('content-disposition') || '';
+  const filename = disposition.match(/filename="([^"]+)"/i)?.[1] || fallbackName;
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function createAdminSelfCollectorPackage(request) {
+  const enrollment = await fetchJsonOrThrow('/api/monitoring/collector-packages', {
+    method: 'POST',
+    body: JSON.stringify({ ...request, scope: 'SELF' })
+  });
+  const response = await fetch('/api/monitoring/collector-installer/windows', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      enrollmentCode: enrollment.enrollmentCode,
+      repairCollectorId: enrollment.repairCollectorId || null
+    })
+  });
+  await downloadCollectorResponse(response);
+  return enrollment;
+}
+
+async function downloadAdminSelfCollector() {
+  const button = document.getElementById('downloadAdminSelfCollectorBtn');
+  const status = document.getElementById('adminSelfCollectorStatus');
+  if (!button || !status) return;
+  button.disabled = true;
+  status.textContent = 'Creating your secure SELF-scope installer…';
+  status.className = 'small';
+  try {
+    const enrollment = await createAdminSelfCollectorPackage({
+      name: `${window.currentUser?.fullName || 'Admin'} Windows device`,
+      siteId: 'self-device'
+    });
+    const target = enrollment.baseUrl || window.location.origin;
+    status.textContent = `Downloaded for ${String(enrollment.environment || 'production').toUpperCase()} (${target}). Run it within 10 minutes and approve the Windows prompt.`;
+    status.className = 'small text-success';
+  } catch (error) {
+    status.textContent = error.message || 'Unable to download collector.';
+    status.className = 'small text-danger';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function repairAdminSelfCollector(id) {
+  const item = adminSelfCollectorRecords.get(id);
+  const status = document.getElementById('adminSelfCollectorStatus');
+  if (!item || !status) return;
+  status.textContent = `Creating a repair installer for ${item.name}…`;
+  status.className = 'small';
+  try {
+    await createAdminSelfCollectorPackage({ name: item.name, siteId: item.siteId, repairCollectorId: item.collectorId });
+    status.textContent = 'Repair installer downloaded. Run it as administrator on the same computer.';
+    status.className = 'small text-success';
+  } catch (error) {
+    status.textContent = error.message || 'Unable to create repair installer.';
+    status.className = 'small text-danger';
+  }
+}
+
+async function downloadAdminSelfCollectorDiagnostics(id) {
+  const response = await fetch(`/api/monitoring/my-collectors/${encodeURIComponent(id)}/diagnostics`, { headers: authHeaders() });
+  await downloadCollectorResponse(response, 'AITSM-collector-diagnostics.txt');
+}
+
+async function revokeAdminSelfCollector(id) {
+  if (!confirm('Remove this collector from your account?')) return;
+  await fetchJsonOrThrow(`/api/monitoring/my-collectors/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await loadAdminSelfCollectors();
+}
+
+async function loadAdminSelfCollectors() {
+  const target = document.getElementById('adminSelfCollectors');
+  if (!target) return;
+  const collectors = await fetchJsonOrThrow('/api/monitoring/my-collectors');
+  adminSelfCollectorRecords = new Map(collectors.map(item => [item.collectorId, item]));
+  target.innerHTML = collectors.length ? collectors.map(item => `
+    <div class='insight-item'>
+      <div>
+        <strong>${escapeHtml(item.name)}</strong>
+        <div class='small'>${escapeHtml(item.state)} · ${escapeHtml(formatDateTime(item.lastSeenAt))}</div>
+        <div class='small'>${escapeHtml(item.statusReason || '')}</div>
+        <div class='small'>Agent ${escapeHtml(item.agentVersion || 'legacy')} · Failures ${Number(item.consecutiveFailures || 0)}</div>
+      </div>
+      <div class='inline-actions'>
+        <button class='btn btn-ghost' type='button' data-collector-action='diagnostics' data-collector-id='${escapeHtml(item.collectorId)}'>Diagnostics</button>
+        ${item.state === 'REVOKED' ? '' : `<button class='btn btn-ghost' type='button' data-collector-action='repair' data-collector-id='${escapeHtml(item.collectorId)}'>Repair</button><button class='btn btn-ghost' type='button' data-collector-action='remove' data-collector-id='${escapeHtml(item.collectorId)}'>Remove</button>`}
+      </div>
+    </div>`).join('') : `<p class='small'>No SELF-scope collector installed for your Admin account.</p>`;
+}
+
+async function mountAdminSelfCollector() {
+  await window.aitsmReady;
+  if (!['admin', 'it-admin'].includes(currentRole())) return;
+  const card = document.getElementById('adminSelfCollectorCard');
+  card?.classList.remove('hidden');
+  document.getElementById('downloadAdminSelfCollectorBtn')?.addEventListener('click', downloadAdminSelfCollector);
+  card?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-collector-action]');
+    if (!button) return;
+    const id = button.dataset.collectorId;
+    if (button.dataset.collectorAction === 'diagnostics') downloadAdminSelfCollectorDiagnostics(id).catch(error => showAppAlert(error.message));
+    if (button.dataset.collectorAction === 'repair') repairAdminSelfCollector(id);
+    if (button.dataset.collectorAction === 'remove') revokeAdminSelfCollector(id).catch(error => showAppAlert(error.message));
+  });
+  await loadAdminSelfCollectors().catch((error) => {
+    const status = document.getElementById('adminSelfCollectorStatus');
+    if (status) { status.textContent = error.message || 'Unable to load collectors.'; status.className = 'small text-danger'; }
+  });
+}
+
 function renderSlaIntelligence() {
   const analytics = dashboardState.slaAnalytics || {};
   const summary = document.getElementById('slaAnalyticsSummary');
@@ -756,6 +882,7 @@ function startDashboardFeedRefresh() {
 document.addEventListener('DOMContentLoaded', () => {
   wireTrendControls();
   loadAdminDashboard();
+  mountAdminSelfCollector();
   startDashboardTelemetryRefresh();
   startDashboardFeedRefresh();
   document.getElementById('refreshAdminOpsFeedBtn')?.addEventListener('click', refreshDashboardFeed);

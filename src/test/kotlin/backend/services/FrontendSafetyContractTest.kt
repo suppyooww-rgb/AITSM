@@ -34,7 +34,7 @@ class FrontendSafetyContractTest {
         val page = Files.readString(Path.of("src/main/resources/static/frontend/monitoring/html/monitoring.html"))
         assertFalse(monitoring.contains("ManagementFactory"))
         assertFalse(monitoring.contains("discoverArpPeers"))
-        assertTrue(frontend.contains("Last data received"))
+        assertTrue(frontend.contains("Last LAN report"))
         assertFalse(frontend.contains("Host CPU"))
         assertTrue(frontend.contains("waiting for LAN collector"))
         assertTrue(frontend.contains("['PENDING', 'IN_PROGRESS'].includes(discoveryState)"))
@@ -153,13 +153,21 @@ class FrontendSafetyContractTest {
         assertTrue(service.contains("existing.status !in setOf(TicketStatus.RESOLVED, TicketStatus.CLOSED)"))
     }
 
-    @Test fun `device surfaces are collector only and inventory details are click through`() {
+    @Test fun `device surfaces separate lan observations from managed inventory`() {
         val monitoring = Files.readString(Path.of("src/main/kotlin/backend/services/MonitoringService.kt"))
+        val repository = Files.readString(Path.of("src/main/kotlin/backend/repository/MonitoringRepository.kt"))
         val inventoryService = Files.readString(Path.of("src/main/kotlin/backend/services/InventoryService.kt"))
+        val monitoringHtml = Files.readString(Path.of("src/main/resources/static/frontend/monitoring/html/monitoring.html"))
+        val monitoringScript = Files.readString(Path.of("src/main/resources/static/frontend/monitoring/js/monitoring.js"))
         val inventoryHtml = Files.readString(Path.of("src/main/resources/static/frontend/inventory/html/inventory.html"))
         val inventoryScript = Files.readString(Path.of("src/main/resources/static/frontend/inventory/js/inventory.js"))
 
-        assertTrue(monitoring.contains("visibleCollectorDevices"))
+        assertTrue(monitoring.contains("fun lanDevices() = repository.lanDevices()"))
+        assertTrue(repository.contains("MonitoringLanObservationsTable"))
+        assertTrue(repository.contains("collectorScope == \"LAN\""))
+        assertTrue(monitoringHtml.contains("<th>LAN Presence</th><th>Telemetry</th>"))
+        assertTrue(monitoringScript.contains("lanPresenceState"))
+        assertTrue(monitoringScript.contains("lastTelemetryAt"))
         assertTrue(monitoring.contains("it.telemetryAvailable && it.inventory != null"))
         assertTrue(inventoryService.contains("filters.copy(connectionSource = \"agent\")"))
         assertTrue(inventoryScript.contains("class='inventory-device-row'"))

@@ -254,6 +254,28 @@ object MonitoringDeviceAddressesTable : Table("monitoring_device_addresses") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object MonitoringLanObservationsTable : Table("monitoring_lan_observations") {
+    val id = long("id").autoIncrement()
+    val collectorId = uuid("collector_id").references(MonitoringCollectorsTable.id, onDelete = ReferenceOption.CASCADE).index()
+    val identityKey = varchar("identity_key", 220)
+    val deviceKey = varchar("device_key", 200)
+    val hostname = varchar("hostname", 200)
+    val ipAddress = varchar("ip_address", 45).index()
+    val macAddress = varchar("mac_address", 32).nullable()
+    val deviceUuid = varchar("device_uuid", 160).nullable()
+    val osDetails = varchar("os_details", 300).nullable()
+    val telemetryAvailable = bool("telemetry_available")
+    val cpuUsagePercent = decimal("cpu_usage_percent", 5, 2).nullable()
+    val memoryUsagePercent = decimal("memory_usage_percent", 5, 2).nullable()
+    val storageTotalBytes = long("storage_total_bytes").nullable()
+    val storageUsedBytes = long("storage_used_bytes").nullable()
+    val measurementAt = datetime("measurement_at").nullable()
+    val firstSeenAt = datetime("first_seen_at")
+    val lastSeenAt = datetime("last_seen_at").index()
+    init { uniqueIndex(collectorId, identityKey) }
+    override val primaryKey = PrimaryKey(id)
+}
+
 object DiscoveryRequestsTable : Table("monitoring_discovery_requests") {
     val id = uuid("id")
     val collectorId = uuid("collector_id").references(MonitoringCollectorsTable.id, onDelete = ReferenceOption.CASCADE).index()
@@ -507,6 +529,7 @@ object DatabaseFactory {
                 CollectorEnrollmentCodesTable,
                 MonitoringDevicesTable,
                 MonitoringDeviceAddressesTable,
+                MonitoringLanObservationsTable,
                 DiscoveryRequestsTable,
                 TicketsTable,
                 TicketHistoryTable,

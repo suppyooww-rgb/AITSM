@@ -89,6 +89,14 @@ class CollectorInstallerContractTest {
         assertTrue(adapterMigration.contains("monitoring_device_addresses"))
     }
 
+    @Test fun `lan discovery excludes network broadcast and multicast addresses`() {
+        val collector = Files.readString(Path.of("collector/windows/AitsmCollector.ps1"))
+        assertTrue(collector.contains("function Test-UsableLanIp"))
+        assertTrue(collector.contains("\$first -ge 224"))
+        assertTrue(collector.contains("\$isNetwork -or \$isBroadcast"))
+        assertTrue(collector.contains("Test-UsableLanIp \$candidateIp \$Cidrs"))
+    }
+
     @Test fun `revoked collectors can be archived without deleting history`() {
         val migration = Files.readString(Path.of("db/migrations/V013__archive_revoked_collectors.sql"))
         val repository = Files.readString(Path.of("src/main/kotlin/backend/repository/MonitoringRepository.kt"))

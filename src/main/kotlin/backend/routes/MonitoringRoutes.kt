@@ -155,7 +155,12 @@ fun Route.monitoringRoutes(
             if (!call.requireRole(UserRole.ADMIN)) return@get
             call.respond(HttpStatusCode.Gone, ApiErrorResponse(410, "Cloud service host metrics are not LAN device telemetry."))
         }
-        get("/lan-devices") { if (call.requireRole(UserRole.ADMIN)) call.respond(service.lanDevices()) }
+        get("/lan-devices") {
+            if (call.requireRole(UserRole.ADMIN)) {
+                val includeHistory = call.request.queryParameters["history"]?.equals("true", ignoreCase = true) == true
+                call.respond(service.lanDevices(includeHistory))
+            }
+        }
         get("/lan-peer-ips") { if (call.requireRole(UserRole.ADMIN)) call.respond(service.lanPeerIps()) }
         get("/summary") { if (call.requireRole(UserRole.ADMIN)) call.respond(service.summary()) }
         post("/refresh-discovery") {

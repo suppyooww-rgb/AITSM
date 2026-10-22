@@ -4,6 +4,7 @@ import backend.models.LanDeviceDto
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 class LiveDeviceSelectionTest {
     private fun reading(source: String, telemetry: Boolean, stale: Boolean, cpu: Double? = null) = LanDeviceDto(
@@ -51,5 +52,16 @@ class LiveDeviceSelectionTest {
         val agent = reading("COLLECTOR_AGENT", telemetry = true, stale = false, cpu = 18.0)
 
         assertEquals(listOf(agent), visibleCollectorDevices(listOf(observed, agent)))
+    }
+
+    @Test fun `lan host validation rejects network broadcast and multicast addresses`() {
+        val cidrs = listOf("192.168.0.0/24", "10.0.0.0/8")
+        assertTrue(isUsableLanHost("192.168.0.1", cidrs))
+        assertTrue(isUsableLanHost("192.168.0.104", cidrs))
+        assertFalse(isUsableLanHost("192.168.0.0", cidrs))
+        assertFalse(isUsableLanHost("192.168.0.255", cidrs))
+        assertFalse(isUsableLanHost("10.255.255.255", cidrs))
+        assertFalse(isUsableLanHost("224.0.0.1", cidrs))
+        assertFalse(isUsableLanHost("192.168.1.5", cidrs))
     }
 }

@@ -9,7 +9,8 @@ let monitoringDevicesCache = [];
 const monitoringFilters = {
   search: '',
   reachability: 'all',
-  sort: 'cpu-desc'
+  sort: 'cpu-desc',
+  includeHistory: false
 };
 
 function statusBadge(status) {
@@ -92,7 +93,15 @@ function applyMonitoringFilters(devices) {
 function renderMonitorTableCount(visibleCount, totalCount) {
   const el = document.getElementById('monitorTableCount');
   if (!el) return;
-  el.textContent = `${visibleCount} shown / ${totalCount} LAN-observed devices`;
+  const scope = monitoringFilters.includeHistory ? '30-day history' : 'current and recent';
+  el.textContent = `${visibleCount} shown / ${totalCount} ${scope} LAN observations`;
+}
+
+function updateLanHistoryButton() {
+  const button = document.getElementById('showLanHistoryBtn');
+  if (!button) return;
+  button.textContent = monitoringFilters.includeHistory ? 'Show current devices' : 'Show 30-day history';
+  button.setAttribute('aria-pressed', monitoringFilters.includeHistory ? 'true' : 'false');
 }
 
 function updateMonitoringLiveStatus(state = 'idle', message) {
@@ -275,12 +284,12 @@ async function loadMonitoring({ force = false, source = 'manual' } = {}) {
   monitoringRefreshInFlight = true;
   updateMonitoringLiveStatus('loading');
   const monitorRows = document.getElementById('monitorTableRows');
-  if (monitorRows) showTableSkeleton(monitorRows, { rowCount: 6, columnCount: 6 });
+  if (monitorRows) showTableSkeleton(monitorRows, { rowCount: 6, columnCount: 8 });
 
   try {
     const [summaryRes, devicesRes, peerIpsRes] = await Promise.all([
       fetch('/api/monitoring/summary', { headers: authHeaders() }),
-      fetch('/api/monitoring/lan-devices', { headers: authHeaders() }),
+      fetch(`/api/monitoring/lan-devices${monitoringFilters.includeHistory ? '?history=true' : ''}`, { headers: authHeaders() }),
       fetch('/api/monitoring/lan-peer-ips', { headers: authHeaders() })
     ]);
 
@@ -293,9 +302,12 @@ async function loadMonitoring({ force = false, source = 'manual' } = {}) {
     const safePeerIps = Array.isArray(peerIps) ? peerIps : [];
     monitoringDevicesCache = safeDevices;
 
+    const currentDevices = safeDevices.filter((device) => device.lanPresenceState !== 'UNKNOWN'
+      && (device.lanPresenceState !== 'OFFLINE'
+        || parseDateValue(device.lastLanSeenAt || device.lastSeen) > Date.now() - (24 * 60 * 60 * 1000)));
     renderMonitorSummary(summary);
-    renderMonitoringHealthPanel(summary, monitoringDevicesCache);
-    renderMonitorCards(monitoringDevicesCache);
+    renderMonitoringHealthPanel(summary, currentDevices);
+    renderMonitorCards(currentDevices);
     if (monitorRows) clearTableSkeleton(monitorRows);
     renderMonitorTable(monitoringDevicesCache);
     renderLanIpSuggestions(safePeerIps);
@@ -309,7 +321,7 @@ async function loadMonitoring({ force = false, source = 'manual' } = {}) {
   } catch {
     monitoringDevicesCache = [];
     renderMonitorTableCount(0, 0);
-    if (monitorRows) renderTableErrorState(monitorRows, 6, 'Unable to load monitoring table data.');
+    if (monitorRows) renderTableErrorState(monitorRows, 8, 'Unable to load monitoring table data.');
     updateMonitoringLiveStatus('error');
   } finally {
     if (monitorRows) clearTableSkeleton(monitorRows);
@@ -517,6 +529,7 @@ function wireMonitoringTableFilters() {
   const search = document.getElementById('monitorSearchInput');
   const reachability = document.getElementById('monitorReachabilityFilter');
   const sort = document.getElementById('monitorSortSelect');
+  const history = document.getElementById('showLanHistoryBtn');
 
   if (search) {
     search.addEventListener('input', () => {
@@ -538,6 +551,15 @@ function wireMonitoringTableFilters() {
     sort.addEventListener('change', () => {
       monitoringFilters.sort = sort.value || 'cpu-desc';
       renderMonitorTable(monitoringDevicesCache);
+    });
+  }
+
+  if (history) {
+    updateLanHistoryButton();
+    history.addEventListener('click', async () => {
+      monitoringFilters.includeHistory = !monitoringFilters.includeHistory;
+      updateLanHistoryButton();
+      await loadMonitoring({ force: true, source: 'history' });
     });
   }
 }

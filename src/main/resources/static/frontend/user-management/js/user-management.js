@@ -93,7 +93,13 @@ async function changeRoleFromUserManagement(userId, role) {
   const data = await res.json();
   consumeCachedReauth('admin-access');
   if (!res.ok) return alert(data.error || 'Unable to update role');
+  alert(data.message || 'Role updated successfully');
   await loadUserManagement();
+}
+
+async function promoteUserToSuperAdmin(userId, email) {
+  if (!confirm(`Promote ${email} to Super Admin? This grants full system and security control.`)) return;
+  await changeRoleFromUserManagement(userId, 'SUPERADMIN');
 }
 
 async function resetUserPasswordFromUserManagement(userId, email) {
@@ -270,23 +276,31 @@ function renderUserManagementRows() {
 
   rows.innerHTML = users.map((u) => {
     const currentUserId = Number(window.currentUser?.id || 0);
-    const canChange = u.role !== 'superadmin' && u.id !== currentUserId;
+    const targetRole = normalizeRole(u.role);
+    const targetIsSuperAdmin = targetRole === 'superadmin';
     const superAdmin = currentRole() === 'superadmin';
+    const targetIsAdministrator = isAdminPortalRole(targetRole);
+    const canChange = !targetIsSuperAdmin
+      && u.id !== currentUserId
+      && (superAdmin || !targetIsAdministrator);
     const encodedEmail = encodeURIComponent(u.email || '');
     const needsAccessProvisioning = !u.emailVerified || String(u.department || '').trim().toLowerCase() === 'pending approval';
     const menuItems = [
       needsAccessProvisioning ? `<button type='button' ${canChange ? '' : 'disabled'} onclick='openAccessApprovalModal(${u.id}, decodeURIComponent("${encodedEmail}"))'>Grant access</button>` : '',
-      superAdmin && normalizeRole(u.role) === 'admin'
+      superAdmin && targetRole === 'admin'
         ? `<button type='button' ${canChange ? '' : 'disabled'} onclick='changeRoleFromUserManagement(${u.id}, "END_USER")'>Set as end-user</button>`
-        : superAdmin && normalizeRole(u.role) === 'end-user'
+        : superAdmin && targetRole === 'end-user'
           ? `<button type='button' ${canChange ? '' : 'disabled'} onclick='openAddAdminFromUserManagement(decodeURIComponent("${encodedEmail}"))'>Grant admin role</button>` : '',
+      superAdmin && ['admin', 'it-admin'].includes(targetRole)
+        ? `<button type='button' ${canChange ? '' : 'disabled'} onclick='promoteUserToSuperAdmin(${u.id}, decodeURIComponent("${encodedEmail}"))'>Promote to Super Admin</button>` : '',
       !u.emailVerified
         ? `<button type='button' ${canChange ? '' : 'disabled'} onclick='setUserEmailApprovalFromUserManagement(${u.id}, true)'>Approve email for login</button>`
         : '',
       `<button type='button' ${canChange ? '' : 'disabled'} onclick='resetUserPasswordFromUserManagement(${u.id}, decodeURIComponent("${encodedEmail}"))'>Reset password</button>`,
-      currentRole() === 'superadmin' && ['admin', 'it-admin'].includes(normalizeRole(u.role))
+      superAdmin && ['admin', 'it-admin'].includes(targetRole)
         ? `<button type='button' ${canChange ? '' : 'disabled'} onclick='resetAdministratorMfa(${u.id}, decodeURIComponent("${encodedEmail}"))'>Reset administrator MFA</button>` : '',
-      `<button type='button' ${canChange ? '' : 'disabled'} onclick='deleteUserFromUserManagement(${u.id}, decodeURIComponent("${encodedEmail}"))'>Delete account</button>`
+      !targetIsSuperAdmin && (superAdmin || !targetIsAdministrator)
+        ? `<button type='button' ${canChange ? '' : 'disabled'} onclick='deleteUserFromUserManagement(${u.id}, decodeURIComponent("${encodedEmail}"))'>Delete account</button>` : ''
     ].join('');
 
     const actionMenu = `<div class='row-action-wrap'>

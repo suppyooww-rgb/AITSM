@@ -88,6 +88,24 @@ class FrontendSafetyContractTest {
         assertTrue(common.contains("enablePasswordVisibilityFields(modal)"))
     }
 
+    @Test fun `super admin accounts cannot be deleted and promotion remains super admin only`() {
+        val frontend = Files.readString(Path.of("src/main/resources/static/frontend/user-management/js/user-management.js"))
+        val routes = Files.readString(Path.of("src/main/kotlin/backend/routes/AuthRoutes.kt"))
+        val service = Files.readString(Path.of("src/main/kotlin/backend/services/AuthService.kt"))
+        val repository = Files.readString(Path.of("src/main/kotlin/backend/repository/UserRepository.kt"))
+
+        assertTrue(frontend.contains("const targetIsSuperAdmin = targetRole === 'superadmin'"))
+        assertTrue(frontend.contains("superAdmin || !targetIsAdministrator"))
+        assertTrue(frontend.contains("!targetIsSuperAdmin"))
+        assertTrue(frontend.contains("Promote to Super Admin"))
+        assertTrue(frontend.contains("promoteUserToSuperAdmin"))
+        assertTrue(routes.contains("if (!call.requireRole(UserRole.SUPERADMIN)) return@put"))
+        assertTrue(routes.contains("Super Admin accounts cannot be deleted"))
+        assertTrue(service.contains("Only an existing administrator can be promoted to Super Admin"))
+        assertTrue(service.contains("targetUserId != actorUserId"))
+        assertTrue(repository.contains("if (row[UsersTable.role] == UserRole.SUPERADMIN.name) return@transaction null"))
+    }
+
     @Test fun `ticket workspaces load every paginated ticket`() {
         val common = Files.readString(Path.of("src/main/resources/static/frontend/modules/common/js/app.js"))
         val pages = listOf(

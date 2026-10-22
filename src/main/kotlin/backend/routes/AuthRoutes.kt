@@ -234,7 +234,7 @@ fun Route.authRoutes(authService: AuthService, sessions: SessionService, invitat
             call.respond(authService.listUsers())
         }
         put("/{id}/role") {
-            if (!call.requirePermission(Permission.ROLE_MANAGE)) return@put
+            if (!call.requireRole(UserRole.SUPERADMIN)) return@put
             if (!call.requireReauthentication(reauthentication, ReauthScope.ADMIN_ACCESS)) return@put
             val id = call.parameters["id"]?.toIntOrNull() ?: return@put call.respond(HttpStatusCode.BadRequest)
             val req = call.receive<RoleUpdateRequest>()
@@ -289,6 +289,9 @@ fun Route.authRoutes(authService: AuthService, sessions: SessionService, invitat
             if (!call.requireReauthentication(reauthentication, ReauthScope.ACCOUNT_DELETE)) return@delete
             val id = call.parameters["id"]?.toIntOrNull() ?: return@delete call.respond(HttpStatusCode.BadRequest)
             val target = authService.currentUser(id)
+            if (target.role == UserRole.SUPERADMIN) {
+                return@delete call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Super Admin accounts cannot be deleted"))
+            }
             if (isAdminPortalRole(target.role) && call.userRole() != UserRole.SUPERADMIN) {
                 return@delete call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Only a Super Admin can delete an administrator account"))
             }

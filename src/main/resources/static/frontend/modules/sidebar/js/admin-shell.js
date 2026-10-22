@@ -146,13 +146,28 @@ function initializeAdminShell() {
   const sidebar = document.getElementById('adminSidebar');
   const header = document.getElementById('utilityHeader');
   if (!sidebar || !header) return false;
-  if (window.__aitsmAdminShellInitialized && sidebar.childElementCount && header.childElementCount) return true;
+  const resolvedRole = String(window.currentUser?.role || '').toUpperCase();
+  if (
+    window.__aitsmAdminShellInitialized
+    && window.__aitsmAdminShellRenderedRole === resolvedRole
+    && sidebar.childElementCount
+    && header.childElementCount
+  ) return true;
   renderAdminSidebar();
   renderUtilityHeader();
   window.__aitsmAdminShellInitialized = true;
+  window.__aitsmAdminShellRenderedRole = resolvedRole;
   if (window.matchMedia('(max-width: 980px)').matches) toggleAdminSidebar(true);
   return Boolean(sidebar.childElementCount && header.childElementCount);
 }
 
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeAdminShell, { once: true });
-else initializeAdminShell();
+async function initializeAdminShellAfterAuthentication() {
+  if (window.aitsmReady) await window.aitsmReady;
+  return initializeAdminShell();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeAdminShellAfterAuthentication, { once: true });
+} else {
+  initializeAdminShellAfterAuthentication();
+}

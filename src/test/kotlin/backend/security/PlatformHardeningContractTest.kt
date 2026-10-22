@@ -36,4 +36,12 @@ class PlatformHardeningContractTest {
         assertTrue(adminDashboard.contains("'Closed Tickets'"))
         assertTrue(ticketAdmin.contains("Reopen as in progress"))
     }
+
+    @Test fun `admin navigation waits for the authenticated role and refreshes role specific links`() {
+        val adminShell = Files.readString(Path.of("src/main/resources/static/frontend/modules/sidebar/js/admin-shell.js"))
+        assertTrue(adminShell.contains("if (window.aitsmReady) await window.aitsmReady"))
+        assertTrue(adminShell.contains("window.__aitsmAdminShellRenderedRole === resolvedRole"))
+        assertTrue(adminShell.contains("window.__aitsmAdminShellRenderedRole = resolvedRole"))
+        assertTrue(adminShell.contains("...(superAdmin ? [{ page: 'settings'"))
+    }
 }

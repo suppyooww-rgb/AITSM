@@ -190,6 +190,21 @@ class FrontendSafetyContractTest {
         assertFalse(settingsStyles.contains("grid-column: 1 / -1"))
     }
 
+    @Test fun `regular administrators receive only a self scope collector workflow`() {
+        val dashboard = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/html/dashboard-admin.html"))
+        val frontend = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/js/dashboard.js"))
+        val service = Files.readString(Path.of("src/main/kotlin/backend/services/MonitoringService.kt"))
+
+        assertTrue(dashboard.contains("id='adminSelfCollectorCard'"))
+        assertTrue(dashboard.contains("Download Device Collector"))
+        assertTrue(frontend.contains("['admin', 'it-admin'].includes(currentRole())"))
+        assertTrue(frontend.contains("body: JSON.stringify({ ...request, scope: 'SELF' })"))
+        assertTrue(frontend.contains("/api/monitoring/my-collectors"))
+        assertTrue(service.contains("val canUseLanScope = role == UserRole.SUPERADMIN"))
+        assertTrue(service.contains("if (canUseLanScope) requestedScope else \"SELF\""))
+        assertTrue(service.contains("if (role == UserRole.SUPERADMIN) collectors() else collectorsForUser(userId)"))
+    }
+
     @Test fun `ollama bridge is explicit secure and only uses authenticated backend routes`() {
         val settingsHtml = Files.readString(Path.of("src/main/resources/static/frontend/settings/html/settings.html"))
         val settingsScript = Files.readString(Path.of("src/main/resources/static/frontend/settings/js/settings.js"))

@@ -20,3 +20,4 @@ V019__repair_legacy_collector_and_sla_schema.sql
 V020__repair_legacy_collector_enrollment_schema.sql
 V021__force_temporary_password_change.sql
 V022__secure_ticket_image_attachments.sql
+V023__separate_lan_presence_from_telemetry.sql

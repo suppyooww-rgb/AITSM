@@ -103,23 +103,28 @@ class MonitoringService(
     fun archive(rawId: String): Boolean = repository.archive(UUID.fromString(rawId))
     fun revokeOwned(rawId: String, userId: Int): Boolean = repository.revokeOwned(UUID.fromString(rawId), userId)
     fun devices() = visibleCollectorDevices(deduplicatedLiveDevices(repository.devices()))
-    fun lanDevices() = devices()
-    fun lanPeerIps() = devices().map { it.ipAddress }.distinct().sorted()
+    fun lanDevices() = repository.lanDevices()
+    fun lanPeerIps() = lanDevices().filter { it.lanPresenceState == "ON_LAN" }.map { it.ipAddress }.distinct().sorted()
     fun cpu() = devices().filter { it.telemetryAvailable }.map { mapOf("device" to it.hostname, "cpu" to (it.cpuUsagePercent?.toString() ?: "unavailable")) }
     fun alerts() = devices().filter { (it.cpuUsagePercent ?: 0.0) > 85 || (it.memoryUsagePercent ?: 0.0) > 90 }
         .map { mapOf("device" to it.hostname, "message" to "High resource usage reported by collector") }
 
     fun summary(): MonitoringSummaryDto {
-        val devices = devices()
-        val collectors = collectors().filter { it.state != "REVOKED" }
+        val devices = lanDevices()
+        val collectors = collectors().filter { it.scope == "LAN" && it.state !in setOf("REVOKED", "ARCHIVED") }
         val newest = collectors.maxByOrNull { it.lastSeenAt ?: it.enrolledAt }
         val discovery = repository.latestDiscovery()
         return MonitoringSummaryDto(
-            totalDiscovered = devices.size, monitoredDevices = devices.count { it.reachable },
+            totalDiscovered = devices.size, monitoredDevices = devices.count { it.lanPresenceState == "ON_LAN" },
             telemetryAvailableDevices = devices.count { it.telemetryAvailable && !it.stale }, hostTelemetry = null,
             timestamp = devices.mapNotNull { it.receivedAt }.maxOrNull(), collectorState = newest?.state ?: "NOT_ENROLLED",
             collectorLastSeenAt = newest?.lastSeenAt, discoveryState = discovery.first,
-            discoveryCompletedAt = discovery.second, serviceHealthCheckedAt = clock.instant().toString()
+            discoveryCompletedAt = discovery.second, serviceHealthCheckedAt = clock.instant().toString(),
+            onLanDevices = devices.count { it.lanPresenceState == "ON_LAN" },
+            staleDevices = devices.count { it.lanPresenceState == "STALE" },
+            offlineDevices = devices.count { it.lanPresenceState == "OFFLINE" },
+            offLanDevices = devices.count { it.lanPresenceState == "OFF_LAN" },
+            unknownDevices = devices.count { it.lanPresenceState == "UNKNOWN" }
         )
     }
 
@@ -143,7 +148,7 @@ class MonitoringService(
         require((report.previousError?.length ?: 0) <= 500) { "Collector diagnostic error is too long." }
         require(report.consecutiveFailures in 0..100_000) { "Collector failure count is invalid." }
         report.devices.forEach { validateDevice(it, collector.scope) }
-        val (receivedAt, count) = repository.saveReport(collector.id, report, measuredAt)
+        val (receivedAt, count) = repository.saveReport(collector.id, collector.scope, report, measuredAt)
         report.devices.filter { it.telemetryAvailable && it.inventory != null }.forEach { device ->
             inventoryService.upsertDetectedAsset(device.toInventoryUpsert(), saveSnapshot = false)
         }

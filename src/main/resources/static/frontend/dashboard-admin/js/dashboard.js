@@ -478,11 +478,11 @@ function renderMetricCards() {
 
   const cards = [
     ['TS', 'Total Assets', Number(inventory.total || 0), 'Registered inventory devices'],
-    ['DD', 'Discoverable Devices', Number(monitorSummary.totalDiscovered || 0), 'LAN devices currently visible'],
+    ['DD', 'Devices On LAN', Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0), 'Observed by the active LAN collector'],
     ['AT', 'Active Tickets', activeCount, 'Open and in-progress requests'],
     ['RC', 'Resolved Tickets', resolvedCount, 'Awaiting requester confirmation'],
     ['CC', 'Closed Tickets', closedCount, 'Completed and closed requests'],
-    ['TC', 'Telemetry Coverage', `${Number(monitorSummary.telemetryAvailableDevices || 0)}/${Number(monitorSummary.totalDiscovered || 0)}`, 'Devices with telemetry stream'],
+    ['TC', 'Telemetry Coverage', `${Number(monitorSummary.telemetryAvailableDevices || 0)}/${Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0)}`, 'On-LAN devices with a telemetry stream'],
     ['CL', 'Collector Health', String(monitorSummary.collectorState || 'NOT_ENROLLED').replaceAll('_', ' '), `Last seen ${formatDateTime(monitorSummary.collectorLastSeenAt)}`],
     ['UP', 'Telemetry Updated', monitorSummary.timestamp ? formatDateTime(monitorSummary.timestamp) : 'Never', 'Authoritative server receipt time']
   ];
@@ -536,7 +536,7 @@ function renderOperationalReport() {
     ['Active Tickets', activeTickets, 'Tickets requiring current handling'],
     ['Ticket Trend', resolutionRate, `${monthLabel(resolvedMonthToken)} resolution rate`],
     ['Operational Alerts', criticalAlerts.length, 'High CPU/memory devices'],
-    ['Discoverable Devices', Number(monitorSummary.totalDiscovered || 0), 'Devices seen in LAN discovery']
+    ['Devices On LAN', Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0), 'Devices currently seen by LAN discovery']
   ];
 
   host.innerHTML = stats.map(([label, value, hint]) => `
@@ -565,7 +565,7 @@ function renderSystemPerformance() {
   }).length;
 
   const totalTickets = Math.max(1, tickets.length);
-  const discoverable = Math.max(1, Number(monitorSummary.totalDiscovered || 0));
+  const discoverable = Math.max(1, Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0));
   const telemetryCoverage = (Number(monitorSummary.telemetryAvailableDevices || 0) / discoverable) * 100;
   const ticketLoad = Math.min(100, (activeTickets / totalTickets) * 100);
 

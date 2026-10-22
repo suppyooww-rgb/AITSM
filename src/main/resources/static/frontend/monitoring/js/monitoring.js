@@ -73,9 +73,9 @@ function applyMonitoringFilters(devices) {
       device.ipAddress
     ].map(normalizedMonitorText).some((token) => token.includes(search));
 
+    const presence = normalizedMonitorText(device.lanPresenceState).replace('_', '-');
     const matchesReachability = monitoringFilters.reachability === 'all'
-      || (monitoringFilters.reachability === 'online' && device.reachable)
-      || (monitoringFilters.reachability === 'offline' && !device.reachable);
+      || monitoringFilters.reachability === presence;
 
     return matchesSearch && matchesReachability;
   });
@@ -92,7 +92,7 @@ function applyMonitoringFilters(devices) {
 function renderMonitorTableCount(visibleCount, totalCount) {
   const el = document.getElementById('monitorTableCount');
   if (!el) return;
-  el.textContent = `${visibleCount} shown / ${totalCount} collector devices`;
+  el.textContent = `${visibleCount} shown / ${totalCount} LAN-observed devices`;
 }
 
 function updateMonitoringLiveStatus(state = 'idle', message) {
@@ -120,9 +120,21 @@ function updateMonitoringLiveStatus(state = 'idle', message) {
 }
 
 function telemetryBadge(device) {
-  const label = device.stale ? 'Stale telemetry' : (device.telemetryAvailable ? (device.telemetrySourceType || 'Telemetry') : 'Unavailable');
-  const tone = device.telemetryAvailable && !device.stale ? 'resolved' : 'warning';
+  const state = String(device.telemetryState || (device.telemetryAvailable ? 'AVAILABLE' : 'UNAVAILABLE')).toUpperCase();
+  const label = state === 'AVAILABLE' ? 'Host telemetry' : state === 'STALE' ? 'Stale telemetry' : state === 'OFFLINE' ? 'Telemetry offline' : 'LAN observation only';
+  const tone = state === 'AVAILABLE' ? 'resolved' : 'warning';
   return `<span class='badge ${tone} monitor-telemetry-badge' title='${aitsmEscapeHtml(label)}'>${aitsmEscapeHtml(label)}</span>`;
+}
+
+function lanPresenceLabel(device) {
+  const state = String(device.lanPresenceState || (device.reachable ? 'ON_LAN' : 'OFFLINE')).toUpperCase();
+  return {
+    ON_LAN: 'On LAN',
+    OFF_LAN: 'Off LAN',
+    STALE: 'Stale',
+    OFFLINE: 'Offline',
+    UNKNOWN: 'Unknown'
+  }[state] || state.replaceAll('_', ' ');
 }
 
 function renderMonitorSummary(summary) {
@@ -130,10 +142,11 @@ function renderMonitorSummary(summary) {
   if (!wrap) return;
 
   const chips = [
-    ['Collector Devices', summary?.totalDiscovered ?? 0],
-    ['Monitored Devices', summary?.monitoredDevices ?? 0],
-    ['Telemetry Available', summary?.telemetryAvailableDevices ?? 0],
-    ['Collector', String(summary?.collectorState || 'NOT_ENROLLED').replaceAll('_', ' ')]
+    ['On LAN', summary?.onLanDevices ?? 0],
+    ['Off LAN', summary?.offLanDevices ?? 0],
+    ['Stale / Offline', Number(summary?.staleDevices ?? 0) + Number(summary?.offlineDevices ?? 0)],
+    ['Host Telemetry', summary?.telemetryAvailableDevices ?? 0],
+    ['LAN Collector', String(summary?.collectorState || 'NOT_ENROLLED').replaceAll('_', ' ')]
   ];
 
   wrap.innerHTML = chips.map(([label, value]) => `<div class='kpi-chip'><div class='kpi-label'>${label}</div><div class='kpi-value'>${value}</div></div>`).join('');
@@ -143,15 +156,15 @@ function renderMonitoringHealthPanel(summary, devices) {
   const panel = document.getElementById('monitorHealthPanel');
   if (!panel) return;
 
-  const available = devices.filter(d => d.telemetryAvailable).length;
+  const available = devices.filter(d => d.telemetryState === 'AVAILABLE').length;
   const collectorState = String(summary?.collectorState || 'NOT_ENROLLED').replaceAll('_', ' ');
   const lastUpdate = summary?.timestamp;
   panel.innerHTML = `
     <div class='insight-grid monitor-health-grid'>
       <div class='insight-item'><div class='insight-label'>Collector health</div><div class='insight-value monitor-text-wrap'>${aitsmEscapeHtml(collectorState)}</div></div>
       <div class='insight-item'><div class='insight-label'>LAN scan</div><div class='insight-value'>${aitsmEscapeHtml(String(summary?.discoveryState || 'NEVER').replaceAll('_', ' '))}</div></div>
-      <div class='insight-item'><div class='insight-label'>Telemetry coverage</div><div class='insight-value'>${available}/${devices.length}</div></div>
-      <div class='insight-item'><div class='insight-label'>Last data received</div><div class='insight-value monitor-text-wrap monitor-updated-at'>${formatLastSeen(lastUpdate)}</div></div>
+      <div class='insight-item'><div class='insight-label'>Host telemetry</div><div class='insight-value'>${available}/${devices.length}</div></div>
+      <div class='insight-item'><div class='insight-label'>Last LAN report</div><div class='insight-value monitor-text-wrap monitor-updated-at'>${formatLastSeen(lastUpdate)}</div></div>
     </div>`;
 }
 
@@ -181,7 +194,7 @@ function renderMonitorCards(devices) {
       <div class='small monitor-device-meta'>
         <span class='monitor-text-wrap'>${aitsmEscapeHtml(d.ipAddress || '-')}</span>
         <span class='monitor-meta-separator' aria-hidden='true'>•</span>
-        <span>Reachable: ${d.reachable ? 'Yes' : 'No'}</span>
+        <span>LAN: ${aitsmEscapeHtml(lanPresenceLabel(d))}</span>
       </div>
       <div class='insight-grid monitor-device-stats'>
         <div class='insight-item'><div class='insight-label'>CPU</div><div class='insight-value'>${d.cpuUsagePercent != null ? `${Number(d.cpuUsagePercent).toFixed(1)}%` : 'N/A'}</div></div>
@@ -190,7 +203,7 @@ function renderMonitorCards(devices) {
     </article>`).join('');
 
   if (devices.length > highlight.length) {
-    wrap.innerHTML += `<div class='small'>Showing top ${highlight.length} devices by utilization out of ${devices.length} collector-managed devices.</div>`;
+    wrap.innerHTML += `<div class='small'>Showing ${highlight.length} highlighted devices out of ${devices.length} LAN observations.</div>`;
   }
 }
 
@@ -202,17 +215,19 @@ function renderMonitorTable(devices) {
   renderMonitorTableCount(visible.length, devices.length);
 
   if (!visible.length) {
-    renderTableEmptyState(rows, 6, devices.length ? 'No devices matched the current filters.' : 'No collector-managed devices are reporting yet.');
+    renderTableEmptyState(rows, 8, devices.length ? 'No devices matched the current filters.' : 'No devices have been observed by an active LAN collector yet.');
     return;
   }
 
   rows.innerHTML = visible.map(d => `<tr>
     <td>${aitsmEscapeHtml(d.hostname || '-')}</td>
     <td title='${aitsmEscapeHtml(`Observed IPs: ${(d.observedIpAddresses || [d.ipAddress]).join(', ')}`)}'>${aitsmEscapeHtml(d.ipAddress || '-')}${(d.observedIpAddresses || []).length > 1 ? `<div class='small'>${d.observedIpAddresses.length} addresses observed</div>` : ''}</td>
-    <td>${d.stale ? 'Stale' : (d.reachable ? 'Online' : 'Offline')}</td>
+    <td><span class='badge ${statusBadge(d.lanPresenceState === 'ON_LAN' ? 'online' : 'unreachable')}'>${aitsmEscapeHtml(lanPresenceLabel(d))}</span></td>
+    <td>${telemetryBadge(d)}</td>
     <td>${d.cpuUsagePercent != null ? `${Number(d.cpuUsagePercent).toFixed(1)}%` : '-'}</td>
     <td>${d.memoryUsagePercent != null ? `${Number(d.memoryUsagePercent).toFixed(1)}%` : '-'}</td>
-    <td>${formatLastSeen(d.lastSeen)}</td>
+    <td>${formatLastSeen(d.lastLanSeenAt || d.lastSeen)}</td>
+    <td>${d.lastTelemetryAt ? formatLastSeen(d.lastTelemetryAt) : 'Never'}</td>
   </tr>`).join('');
 }
 

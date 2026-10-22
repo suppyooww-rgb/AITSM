@@ -1,5 +1,6 @@
 package backend.repository
 
+import backend.models.LanDeviceDto
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,5 +30,33 @@ class LanPresenceStateTest {
         assertEquals("STALE", deriveTelemetryState(now.minusSeconds(180), now))
         assertEquals("OFFLINE", deriveTelemetryState(now.minusSeconds(601), now))
         assertEquals("UNAVAILABLE", deriveTelemetryState(null, now))
+    }
+
+    @Test fun `current view hides abandoned and old offline observations while history retains them`() {
+        fun observation(id: String, state: String, ageSeconds: Long) = LanDeviceDto(
+            id = id, hostname = id, ipAddress = "192.168.1.10", reachable = false,
+            telemetryAvailable = false, telemetrySourceType = "LAN_OBSERVED",
+            lastSeen = now.minusSeconds(ageSeconds).toString(), lanPresenceState = state,
+            lastLanSeenAt = now.minusSeconds(ageSeconds).toString(), identityKey = id,
+            collectorSiteId = "company-lan"
+        )
+        val recentOffline = observation("recent", "OFFLINE", 3_600)
+        val oldOffline = observation("old", "OFFLINE", 90_000)
+        val abandoned = observation("unknown", "UNKNOWN", 60)
+        val observations = listOf(recentOffline, oldOffline, abandoned)
+
+        assertEquals(listOf(recentOffline), selectLanObservations(observations, false, now))
+        assertEquals(3, selectLanObservations(observations, true, now).size)
+    }
+
+    @Test fun `same site and identity collapse to the latest observation`() {
+        val older = LanDeviceDto(
+            id = "older", hostname = "Device", ipAddress = "192.168.1.20", reachable = false,
+            telemetryAvailable = false, telemetrySourceType = "LAN_OBSERVED",
+            lastSeen = now.minusSeconds(60).toString(), lastLanSeenAt = now.minusSeconds(60).toString(),
+            identityKey = "mac:AABBCCDDEEFF", collectorSiteId = "company-lan"
+        )
+        val newer = older.copy(id = "newer", lastSeen = now.toString(), lastLanSeenAt = now.toString())
+        assertEquals(listOf(newer), selectLanObservations(listOf(older, newer), true, now))
     }
 }

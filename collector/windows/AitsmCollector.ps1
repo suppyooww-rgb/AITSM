@@ -28,6 +28,33 @@ function Test-IpInCidr([string]$Ip, [string]$Cidr) {
   } catch { return $false }
 }
 
+function Test-UsableLanIp([string]$Ip, $Cidrs) {
+  try {
+    $address = [Net.IPAddress]::Parse($Ip).GetAddressBytes()
+    if ($address.Length -ne 4) { return $false }
+    $first = [int]$address[0]
+    if ($first -eq 0 -or $first -eq 127 -or $first -ge 224 -or $Ip -eq '255.255.255.255') { return $false }
+
+    foreach ($cidr in @($Cidrs)) {
+      if (-not (Test-IpInCidr $Ip $cidr)) { continue }
+      $parts = $cidr.Split('/')
+      $prefix = [int]$parts[1]
+      if ($prefix -ge 31) { return $true }
+      $isNetwork = $true
+      $isBroadcast = $true
+      for ($i = 0; $i -lt 4; $i++) {
+        $bits = [Math]::Min(8, [Math]::Max(0, $prefix - ($i * 8)))
+        $mask = if ($bits -eq 0) { 0 } else { (0xff -shl (8 - $bits)) -band 0xff }
+        $hostMask = 0xff - $mask
+        if (([int]$address[$i] -band $hostMask) -ne 0) { $isNetwork = $false }
+        if (([int]$address[$i] -band $hostMask) -ne $hostMask) { $isBroadcast = $false }
+      }
+      return -not ($isNetwork -or $isBroadcast)
+    }
+    return $false
+  } catch { return $false }
+}
+
 function Get-DiscoveryCommand {
   try {
     $response = Invoke-WebRequest -Uri "$baseUrl/api/monitoring/collector/commands" -Headers $headers -Method Get -UseBasicParsing
@@ -111,7 +138,7 @@ function Get-CollectorDevices($Cidrs, [bool]$IncludePeers) {
   $primary = Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
     $candidateIp = $_.IPAddress
     $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' -and
-    [bool]($Cidrs | Where-Object { Test-IpInCidr $candidateIp $_ } | Select-Object -First 1)
+    (Test-UsableLanIp $candidateIp $Cidrs)
   } | Select-Object -First 1
   if (-not $primary) { throw 'No local IPv4 address matches the configured private CIDR ranges.' }
   $adapter = Get-NetAdapter -InterfaceIndex $primary.InterfaceIndex -ErrorAction SilentlyContinue
@@ -137,7 +164,7 @@ function Get-CollectorDevices($Cidrs, [bool]$IncludePeers) {
   $peers = if ($IncludePeers) { Get-NetNeighbor -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object {
     $candidateIp = $_.IPAddress
     $_.State -notin @('Unreachable', 'Incomplete') -and $_.IPAddress -ne $primary.IPAddress -and
-    [bool]($Cidrs | Where-Object { Test-IpInCidr $candidateIp $_ } | Select-Object -First 1)
+    (Test-UsableLanIp $candidateIp $Cidrs)
   } | Sort-Object IPAddress -Unique | ForEach-Object {
     $peerName = try { [Net.Dns]::GetHostEntry($_.IPAddress).HostName } catch { 'LAN peer' }
     [ordered]@{

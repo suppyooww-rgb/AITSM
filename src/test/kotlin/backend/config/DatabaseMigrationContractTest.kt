@@ -16,7 +16,7 @@ class DatabaseMigrationContractTest {
             files.filter { it.name.matches(Regex("V\\d+__.+\\.sql")) }.map { it.name }.sorted().toList()
         }
         assertEquals(actual, indexed)
-        assertTrue(indexed.last().startsWith("V023__"))
+        assertTrue(indexed.last().startsWith("V024__"))
     }
 
     @Test fun `deployment runs migrations before candidate health verification`() {

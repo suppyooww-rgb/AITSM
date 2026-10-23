@@ -232,6 +232,8 @@ function setPasswordVisibility(inputId, toggleId) {
   const input = document.getElementById(inputId);
   const toggle = document.getElementById(toggleId);
   if (!input || !toggle) return;
+  if (toggle.dataset.passwordVisibilityBound === 'true') return;
+  toggle.dataset.passwordVisibilityBound = 'true';
 
   const showIcon = toggle.querySelector('.password-toggle-show');
   const hideIcon = toggle.querySelector('.password-toggle-hide');

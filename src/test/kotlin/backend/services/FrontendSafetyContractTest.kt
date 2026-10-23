@@ -75,6 +75,7 @@ class FrontendSafetyContractTest {
         val page = Files.readString(Path.of("src/main/resources/static/frontend/user-management/html/user-management.html"))
         val routes = Files.readString(Path.of("src/main/kotlin/backend/routes/AuthRoutes.kt"))
         val common = Files.readString(Path.of("src/main/resources/static/frontend/modules/common/js/app.js"))
+        val loginScript = Files.readString(Path.of("src/main/resources/static/frontend/login/js/auth.js"))
 
         assertTrue(frontend.contains("await requestReauthPassword()"))
         assertFalse(frontend.contains("prompt(`Verify your password"))
@@ -85,7 +86,11 @@ class FrontendSafetyContractTest {
         assertTrue(routes.contains("Verified invitation accounts cannot be returned to pending status"))
         assertTrue(common.contains("function enablePasswordVisibilityFields(scope = document)"))
         assertTrue(common.contains("scope.querySelectorAll(\"input[type='password']\")"))
+        assertTrue(common.contains("toggle.dataset.passwordVisibilityBound = 'true'"))
+        assertTrue(common.contains("observePasswordVisibilityFields()"))
+        assertTrue(common.contains("new MutationObserver"))
         assertTrue(common.contains("enablePasswordVisibilityFields(modal)"))
+        assertTrue(loginScript.contains("if (toggle.dataset.passwordVisibilityBound === 'true') return"))
     }
 
     @Test fun `super admin accounts cannot be deleted and promotion remains super admin only`() {

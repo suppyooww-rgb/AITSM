@@ -147,7 +147,8 @@ function telemetryBadge(device) {
       : state === 'OFFLINE'
         ? 'Start or repair the collector.'
         : 'Install the device collector.';
-  return `<div class='monitor-telemetry-health' title='${aitsmEscapeHtml(explanation + lastReport)}'><span class='badge ${tone} monitor-telemetry-badge'>${percentage}%</span><div class='small monitor-telemetry-advice'>${aitsmEscapeHtml(advice)}</div></div>`;
+  const details = `${advice} ${explanation}${lastReport}`;
+  return `<div class='monitor-telemetry-health'><span class='badge ${tone} monitor-telemetry-badge'>${percentage}%</span><span class='monitor-info-icon' role='img' tabindex='0' aria-label='${aitsmEscapeHtml(details)}' title='${aitsmEscapeHtml(details)}'>i</span></div>`;
 }
 
 function lanPresenceLabel(device) {
@@ -259,7 +260,7 @@ function renderMonitorTable(devices) {
     <td>${aitsmEscapeHtml(d.hostname || '-')}</td>
     <td title='${aitsmEscapeHtml(`Observed IPs: ${(d.observedIpAddresses || [d.ipAddress]).join(', ')}`)}'>${aitsmEscapeHtml(d.ipAddress || '-')}${(d.observedIpAddresses || []).length > 1 ? `<div class='small'>${d.observedIpAddresses.length} addresses observed</div>` : ''}</td>
     <td><span class='badge ${statusBadge(d.lanPresenceState === 'ON_LAN' ? 'online' : 'unreachable')}'>${aitsmEscapeHtml(lanPresenceLabel(d))}</span></td>
-    <td>${telemetryBadge(d)}</td>
+    <td class='monitor-telemetry-cell'>${telemetryBadge(d)}</td>
     <td>${d.cpuUsagePercent != null ? `${Number(d.cpuUsagePercent).toFixed(1)}%` : '-'}</td>
     <td>${d.memoryUsagePercent != null ? `${Number(d.memoryUsagePercent).toFixed(1)}%` : '-'}</td>
     <td>${formatLastSeen(d.lastLanSeenAt || d.lastSeen)}</td>

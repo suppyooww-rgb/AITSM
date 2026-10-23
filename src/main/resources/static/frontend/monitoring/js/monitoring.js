@@ -158,11 +158,16 @@ function renderMonitorSummary(summary) {
   const wrap = document.getElementById('monitorSummary');
   if (!wrap) return;
 
+  const discoverable = Number(summary?.onLanDevices ?? summary?.monitoredDevices ?? 0);
+  const telemetryCoverage = discoverable > 0
+    ? Math.round((Number(summary?.telemetryAvailableDevices || 0) / discoverable) * 100)
+    : 0;
+
   const chips = [
     ['On LAN', summary?.onLanDevices ?? 0],
     ['Off LAN', summary?.offLanDevices ?? 0],
     ['Stale / Offline', Number(summary?.staleDevices ?? 0) + Number(summary?.offlineDevices ?? 0)],
-    ['Host Telemetry', summary?.telemetryAvailableDevices ?? 0],
+    ['Telemetry Coverage', `${Math.min(100, telemetryCoverage)}%`],
     ['LAN Collector', String(summary?.collectorState || 'NOT_ENROLLED').replaceAll('_', ' ')]
   ];
 
@@ -174,13 +179,20 @@ function renderMonitoringHealthPanel(summary, devices) {
   if (!panel) return;
 
   const available = devices.filter(d => d.telemetryState === 'AVAILABLE').length;
+  const coverage = devices.length ? Math.round((available / devices.length) * 100) : 0;
+  const missing = Math.max(0, devices.length - available);
+  const telemetryAdvice = devices.length === 0
+    ? 'No current LAN devices are available for telemetry assessment.'
+    : missing === 0
+      ? 'All current LAN devices are reporting telemetry.'
+      : `Review the ${missing} ${missing === 1 ? 'device' : 'devices'} without current telemetry; install or repair collectors where they are company-managed.`;
   const collectorState = String(summary?.collectorState || 'NOT_ENROLLED').replaceAll('_', ' ');
   const lastUpdate = summary?.timestamp;
   panel.innerHTML = `
     <div class='insight-grid monitor-health-grid'>
       <div class='insight-item'><div class='insight-label'>Collector health</div><div class='insight-value monitor-text-wrap'>${aitsmEscapeHtml(collectorState)}</div></div>
       <div class='insight-item'><div class='insight-label'>LAN scan</div><div class='insight-value'>${aitsmEscapeHtml(String(summary?.discoveryState || 'NEVER').replaceAll('_', ' '))}</div></div>
-      <div class='insight-item'><div class='insight-label'>Host telemetry</div><div class='insight-value'>${available}/${devices.length}</div></div>
+      <div class='insight-item'><div class='insight-label'>Telemetry coverage</div><div class='insight-value'>${coverage}%</div><div class='small monitor-text-wrap'>${aitsmEscapeHtml(telemetryAdvice)}</div></div>
       <div class='insight-item'><div class='insight-label'>Last LAN report</div><div class='insight-value monitor-text-wrap monitor-updated-at'>${formatLastSeen(lastUpdate)}</div></div>
     </div>`;
 }

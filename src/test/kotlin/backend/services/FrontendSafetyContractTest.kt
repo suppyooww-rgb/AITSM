@@ -170,6 +170,8 @@ class FrontendSafetyContractTest {
         assertTrue(monitoringScript.contains("lanPresenceState"))
         assertTrue(monitoringScript.contains("lastTelemetryAt"))
         assertTrue(monitoringScript.contains("Telemetry was received within the last two minutes."))
+        assertTrue(monitoringScript.contains("['Telemetry Coverage', `${'$'}{Math.min(100, telemetryCoverage)}%`]"))
+        assertTrue(monitoringScript.contains("Review the ${'$'}{missing}"))
         assertTrue(monitoringHtml.contains("Show 30-day history"))
         assertTrue(monitoringScript.contains("?history=true"))
         assertTrue(monitoring.contains("it.telemetryAvailable && it.inventory != null"))

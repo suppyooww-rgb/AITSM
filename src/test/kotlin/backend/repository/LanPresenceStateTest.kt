@@ -34,7 +34,7 @@ class LanPresenceStateTest {
 
     @Test fun `current view hides abandoned and old offline observations while history retains them`() {
         fun observation(id: String, state: String, ageSeconds: Long) = LanDeviceDto(
-            id = id, hostname = id, ipAddress = "192.168.1.10", reachable = false,
+            id = id, hostname = id, ipAddress = "192.168.1.${10 + id.length}", reachable = false,
             telemetryAvailable = false, telemetrySourceType = "LAN_OBSERVED",
             lastSeen = now.minusSeconds(ageSeconds).toString(), lanPresenceState = state,
             lastLanSeenAt = now.minusSeconds(ageSeconds).toString(), identityKey = id,
@@ -58,5 +58,20 @@ class LanPresenceStateTest {
         )
         val newer = older.copy(id = "newer", lastSeen = now.toString(), lastLanSeenAt = now.toString())
         assertEquals(listOf(newer), selectLanObservations(listOf(older, newer), true, now))
+    }
+
+    @Test fun `legacy and stable identities on the same site and address collapse`() {
+        val legacy = LanDeviceDto(
+            id = "legacy", hostname = "HARUTO", ipAddress = "192.168.0.104", reachable = true,
+            telemetryAvailable = true, telemetrySourceType = "COLLECTOR_AGENT",
+            lastSeen = now.minusSeconds(5).toString(), lastLanSeenAt = now.minusSeconds(5).toString(),
+            identityKey = "collector:legacy:haruto", collectorSiteId = "company-lan"
+        )
+        val stable = legacy.copy(
+            id = "stable", hostname = "Haruto.local", lastSeen = now.toString(), lastLanSeenAt = now.toString(),
+            identityKey = "uuid:12345678-1234-1234-1234-123456789012"
+        )
+
+        assertEquals(listOf(stable), selectLanObservations(listOf(legacy, stable), true, now))
     }
 }

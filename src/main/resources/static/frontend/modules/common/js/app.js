@@ -150,6 +150,7 @@ function enablePasswordVisibility(input) {
   };
 
   updateState(false);
+  toggle.dataset.passwordVisibilityBound = 'true';
   toggle.addEventListener('click', () => updateState(input.type === 'password'));
   input.dataset.passwordVisibility = 'enabled';
 }
@@ -159,6 +160,19 @@ function enablePasswordVisibilityFields(scope = document) {
 }
 
 window.aitsmEnablePasswordVisibilityFields = enablePasswordVisibilityFields;
+
+function observePasswordVisibilityFields() {
+  if (window.aitsmPasswordVisibilityObserver || !document.body) return;
+  const observer = new MutationObserver((records) => {
+    records.forEach((record) => record.addedNodes.forEach((node) => {
+      if (!(node instanceof Element)) return;
+      if (node.matches("input[type='password']")) enablePasswordVisibility(node);
+      enablePasswordVisibilityFields(node);
+    }));
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  window.aitsmPasswordVisibilityObserver = observer;
+}
 
 function ensureReauthModal() {
   if (document.getElementById('reauthModal')) return;
@@ -608,6 +622,7 @@ async function submitPasswordChange(event) {
 
 document.addEventListener('DOMContentLoaded', async () => {
   enablePasswordVisibilityFields();
+  observePasswordVisibilityFields();
   await ensureSharedStylesheet();
   ensurePageSplash();
   await window.aitsmReady;

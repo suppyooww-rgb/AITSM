@@ -130,9 +130,17 @@ function updateMonitoringLiveStatus(state = 'idle', message) {
 
 function telemetryBadge(device) {
   const state = String(device.telemetryState || (device.telemetryAvailable ? 'AVAILABLE' : 'UNAVAILABLE')).toUpperCase();
-  const label = state === 'AVAILABLE' ? 'Host telemetry' : state === 'STALE' ? 'Stale telemetry' : state === 'OFFLINE' ? 'Telemetry offline' : 'LAN observation only';
+  const label = state === 'AVAILABLE' ? 'Healthy' : state === 'STALE' ? 'Delayed' : state === 'OFFLINE' ? 'Offline' : 'Not installed';
   const tone = state === 'AVAILABLE' ? 'resolved' : 'warning';
-  return `<span class='badge ${tone} monitor-telemetry-badge' title='${aitsmEscapeHtml(label)}'>${aitsmEscapeHtml(label)}</span>`;
+  const lastReport = device.lastTelemetryAt ? ` Last report: ${formatLastSeen(device.lastTelemetryAt)}.` : '';
+  const explanation = state === 'AVAILABLE'
+    ? 'Telemetry was received within the last two minutes.'
+    : state === 'STALE'
+      ? 'Telemetry has not been received for two to ten minutes.'
+      : state === 'OFFLINE'
+        ? 'Telemetry has not been received for more than ten minutes.'
+        : 'This LAN peer does not have a device collector.';
+  return `<span class='badge ${tone} monitor-telemetry-badge' title='${aitsmEscapeHtml(explanation + lastReport)}'>${aitsmEscapeHtml(label)}</span>`;
 }
 
 function lanPresenceLabel(device) {
@@ -224,7 +232,7 @@ function renderMonitorTable(devices) {
   renderMonitorTableCount(visible.length, devices.length);
 
   if (!visible.length) {
-    renderTableEmptyState(rows, 8, devices.length ? 'No devices matched the current filters.' : 'No devices have been observed by an active LAN collector yet.');
+    renderTableEmptyState(rows, 7, devices.length ? 'No devices matched the current filters.' : 'No devices have been observed by an active LAN collector yet.');
     return;
   }
 
@@ -236,7 +244,6 @@ function renderMonitorTable(devices) {
     <td>${d.cpuUsagePercent != null ? `${Number(d.cpuUsagePercent).toFixed(1)}%` : '-'}</td>
     <td>${d.memoryUsagePercent != null ? `${Number(d.memoryUsagePercent).toFixed(1)}%` : '-'}</td>
     <td>${formatLastSeen(d.lastLanSeenAt || d.lastSeen)}</td>
-    <td>${d.lastTelemetryAt ? formatLastSeen(d.lastTelemetryAt) : 'Never'}</td>
   </tr>`).join('');
 }
 
@@ -284,7 +291,7 @@ async function loadMonitoring({ force = false, source = 'manual' } = {}) {
   monitoringRefreshInFlight = true;
   updateMonitoringLiveStatus('loading');
   const monitorRows = document.getElementById('monitorTableRows');
-  if (monitorRows) showTableSkeleton(monitorRows, { rowCount: 6, columnCount: 8 });
+  if (monitorRows) showTableSkeleton(monitorRows, { rowCount: 6, columnCount: 7 });
 
   try {
     const [summaryRes, devicesRes, peerIpsRes] = await Promise.all([
@@ -321,7 +328,7 @@ async function loadMonitoring({ force = false, source = 'manual' } = {}) {
   } catch {
     monitoringDevicesCache = [];
     renderMonitorTableCount(0, 0);
-    if (monitorRows) renderTableErrorState(monitorRows, 8, 'Unable to load monitoring table data.');
+    if (monitorRows) renderTableErrorState(monitorRows, 7, 'Unable to load monitoring table data.');
     updateMonitoringLiveStatus('error');
   } finally {
     if (monitorRows) clearTableSkeleton(monitorRows);

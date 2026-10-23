@@ -557,16 +557,25 @@ internal fun selectLanObservations(
     observations: List<LanDeviceDto>,
     includeHistory: Boolean,
     now: Instant
-): List<LanDeviceDto> = observations
-    .groupBy { "${it.collectorSiteId.orEmpty().lowercase()}|${it.identityKey ?: it.ipAddress}" }
-    .values
-    .map { matches -> matches.maxBy { it.lastLanSeenAt ?: it.lastSeen } }
+): List<LanDeviceDto> = collapseLanObservationRows(
+    collapseLanObservationRows(observations) {
+        "${it.collectorSiteId.orEmpty().lowercase()}|identity:${it.identityKey ?: it.ipAddress}"
+    }
+) {
+    "${it.collectorSiteId.orEmpty().lowercase()}|ip:${it.ipAddress}"
+}
     .filter { device ->
         includeHistory || (device.lanPresenceState != "UNKNOWN" &&
             (device.lanPresenceState != "OFFLINE" ||
                 Instant.parse(device.lastLanSeenAt ?: device.lastSeen).isAfter(now.minusSeconds(86_400))))
     }
     .sortedByDescending { it.lastLanSeenAt ?: it.lastSeen }
+
+private fun collapseLanObservationRows(
+    observations: List<LanDeviceDto>,
+    key: (LanDeviceDto) -> String
+): List<LanDeviceDto> = observations.groupBy(key).values
+    .map { matches -> matches.maxBy { it.lastLanSeenAt ?: it.lastSeen } }
 
 internal fun normalizedMac(value: String?): String? = value?.filter(Char::isLetterOrDigit)?.uppercase()
     ?.takeIf { it.length == 12 && it.all { character -> character in '0'..'9' || character in 'A'..'F' } }

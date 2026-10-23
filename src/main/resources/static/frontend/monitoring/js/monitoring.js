@@ -130,7 +130,7 @@ function updateMonitoringLiveStatus(state = 'idle', message) {
 
 function telemetryBadge(device) {
   const state = String(device.telemetryState || (device.telemetryAvailable ? 'AVAILABLE' : 'UNAVAILABLE')).toUpperCase();
-  const label = state === 'AVAILABLE' ? 'Healthy' : state === 'STALE' ? 'Delayed' : state === 'OFFLINE' ? 'Offline' : 'Not installed';
+  const percentage = state === 'AVAILABLE' ? 100 : state === 'STALE' ? 50 : 0;
   const tone = state === 'AVAILABLE' ? 'resolved' : 'warning';
   const lastReport = device.lastTelemetryAt ? ` Last report: ${formatLastSeen(device.lastTelemetryAt)}.` : '';
   const explanation = state === 'AVAILABLE'
@@ -140,7 +140,14 @@ function telemetryBadge(device) {
       : state === 'OFFLINE'
         ? 'Telemetry has not been received for more than ten minutes.'
         : 'This LAN peer does not have a device collector.';
-  return `<span class='badge ${tone} monitor-telemetry-badge' title='${aitsmEscapeHtml(explanation + lastReport)}'>${aitsmEscapeHtml(label)}</span>`;
+  const advice = state === 'AVAILABLE'
+    ? 'No action needed.'
+    : state === 'STALE'
+      ? 'Check the collector connection.'
+      : state === 'OFFLINE'
+        ? 'Start or repair the collector.'
+        : 'Install the device collector.';
+  return `<div class='monitor-telemetry-health' title='${aitsmEscapeHtml(explanation + lastReport)}'><span class='badge ${tone} monitor-telemetry-badge'>${percentage}%</span><div class='small monitor-telemetry-advice'>${aitsmEscapeHtml(advice)}</div></div>`;
 }
 
 function lanPresenceLabel(device) {

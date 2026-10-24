@@ -16,6 +16,25 @@ import io.ktor.server.routing.*
 
 fun Route.knowledgeRoutes(service: KnowledgeService) {
     route("/api/knowledge") {
+        get("/candidates") {
+            if (!call.requireRole(UserRole.SUPERADMIN)) return@get
+            call.respond(service.candidates())
+        }
+        post("/candidates/{id}/publish") {
+            if (!call.requireRole(UserRole.SUPERADMIN)) return@post
+            val id = call.parameters["id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
+            val userId = call.userId() ?: return@post call.respond(HttpStatusCode.Unauthorized)
+            val published = service.publishCandidate(id, call.receive<KnowledgeRequest>(), userId)
+                ?: return@post call.respond(HttpStatusCode.NotFound)
+            call.respond(published)
+        }
+        post("/candidates/{id}/dismiss") {
+            if (!call.requireRole(UserRole.SUPERADMIN)) return@post
+            val id = call.parameters["id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
+            val userId = call.userId() ?: return@post call.respond(HttpStatusCode.Unauthorized)
+            val dismissed = service.dismissCandidate(id, userId) ?: return@post call.respond(HttpStatusCode.NotFound)
+            call.respond(dismissed)
+        }
         get {
             if (!call.requireAuthenticated()) return@get
             val limit = (call.request.queryParameters["limit"]?.toIntOrNull() ?: 20).coerceIn(1, 100)

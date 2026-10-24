@@ -22,3 +22,4 @@ V021__force_temporary_password_change.sql
 V022__secure_ticket_image_attachments.sql
 V023__separate_lan_presence_from_telemetry.sql
 V024__retain_recent_lan_observations.sql
+V025__recurring_knowledge_candidates.sql

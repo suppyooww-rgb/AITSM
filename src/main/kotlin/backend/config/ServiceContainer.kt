@@ -5,6 +5,7 @@ import backend.repository.AuditRepository
 import backend.repository.DeviceRepository
 import backend.repository.ColleagueRepository
 import backend.repository.KnowledgeRepository
+import backend.repository.KnowledgeCandidateRepository
 import backend.repository.TicketRepository
 import backend.repository.UserRepository
 import backend.repository.InvitationRepository
@@ -51,6 +52,7 @@ class ServiceContainer(application: Application) {
     val monitoringRepository = MonitoringRepository()
     val aiBridgeRepository = AIBridgeRepository()
     val knowledgeRepo = KnowledgeRepository()
+    val knowledgeCandidateRepo = KnowledgeCandidateRepository()
     val aiConversationRepository = AIConversationRepository()
 
     val notificationService = NotificationService()
@@ -62,7 +64,7 @@ class ServiceContainer(application: Application) {
     val authService = AuthService(userRepo, auditRepo, notificationService, emailService, sessionService, passwordResetRepo, mfaService)
     val invitationService = InvitationService(invitationRepo, userRepo, auditRepo, emailService, notificationService)
     val profilePhotoService = ProfilePhotoService(userRepo, auditRepo, notificationService)
-    val ticketService = TicketService(ticketRepo, auditRepo, notificationService, userRepo)
+    val ticketService = TicketService(ticketRepo, auditRepo, notificationService, userRepo, knowledgeCandidateRepo)
     val inventoryService = InventoryService(inventoryQueries, assetDetectionService)
     val monitoringService = MonitoringService(monitoringRepository, assetDetectionService, inventoryService)
     val aiService = AIService()
@@ -75,5 +77,5 @@ class ServiceContainer(application: Application) {
     val ticketAiAdvisor = TicketAiAdvisor(ticketService, knowledgeRepo, aiProvider, aiConfigService)
     val slaService = SLAService(auditRepo)
     val slaAutomationService = SlaAutomationService(ticketRepo, userRepo, notificationService)
-    val knowledgeService = KnowledgeService(knowledgeRepo, auditRepo)
+    val knowledgeService = KnowledgeService(knowledgeRepo, knowledgeCandidateRepo, auditRepo)
 }

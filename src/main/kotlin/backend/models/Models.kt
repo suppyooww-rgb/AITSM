@@ -411,6 +411,20 @@ data class NotificationPage(
 )
 @Serializable data class KnowledgeArticle(val id: Int, val title: String, val content: String, val category: String, val createdAt: String)
 @Serializable data class KnowledgeRequest(val title: String, val content: String, val category: String)
+@Serializable data class KnowledgeCandidate(
+    val id: Int,
+    val title: String,
+    val content: String,
+    val category: String,
+    val occurrenceCount: Int,
+    val sourceTicketIds: List<Int>,
+    val status: String,
+    val publishedArticleId: Int? = null,
+    val createdAt: String,
+    val updatedAt: String,
+    val reviewedAt: String? = null
+)
+@Serializable data class KnowledgePublicationResponse(val candidate: KnowledgeCandidate, val article: KnowledgeArticle)
 @Serializable data class AuditLog(val id: Int, val userId: Int?, val action: String, val entity: String, val timestamp: String, val target: String? = null, val result: String = "SUCCESS", val requestId: String? = null, val sourceIp: String? = null, val userAgent: String? = null, val metadata: String? = null)
 
 @Serializable data class TroubleshootingResponse(val suggestions: List<String>)

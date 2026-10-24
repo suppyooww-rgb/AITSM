@@ -8,6 +8,7 @@ import backend.models.UserRole
 import backend.security.Permission
 import backend.security.PermissionMatrix
 import backend.repository.AuditRepository
+import backend.repository.KnowledgeCandidateRepository
 import backend.repository.TicketRepository
 import backend.repository.UserRepository
 import java.time.Duration
@@ -20,7 +21,8 @@ class TicketService(
     private val repository: TicketRepository,
     private val audit: AuditRepository,
     private val notifications: NotificationService,
-    private val users: UserRepository
+    private val users: UserRepository,
+    private val knowledgeCandidates: KnowledgeCandidateRepository
 ) {
     private val followUpThresholdHours = 24L
     private val allowedPriorities = setOf("Critical", "High", "Medium", "Low")
@@ -205,6 +207,10 @@ class TicketService(
                 if (role == UserRole.SUPERADMIN && existing.assignedToUserId != userId) {
                     notifySuperAdminOverride(updated, actor, "changed status to $displayStatus")
                 }
+            }
+            if (status == TicketStatus.RESOLVED) {
+                runCatching { knowledgeCandidates.recordResolved(updated) }
+                    .onFailure { audit.log(userId, "Knowledge pattern tracking failed for ticket #$id", "knowledge_candidates", result = "FAILURE") }
             }
         }
     }

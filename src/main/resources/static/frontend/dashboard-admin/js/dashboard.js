@@ -333,9 +333,18 @@ function renderLineChart(elId, labels, activeSeries, resolvedSeries) {
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
 
-  const x = (i) => pad.left + (i * (plotW / Math.max(1, labels.length - 1)));
+  const x = (i) => labels.length === 1
+    ? pad.left + (plotW / 2)
+    : pad.left + (i * (plotW / (labels.length - 1)));
   const y = (v) => pad.top + (plotH - ((v / maxValue) * plotH));
   const toPath = (series) => series.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(v)}`).join(' ');
+  const points = (series, color, name) => series.map((value, index) => `
+    <circle cx='${x(index)}' cy='${y(value)}' r='5' fill='${color}' stroke='#fff' stroke-width='2'>
+      <title>${escapeHtml(`${name}: ${value}`)}</title>
+    </circle>`).join('');
+  const singlePeriodValues = labels.length === 1 ? `
+    <text x='${x(0)}' y='${Math.max(14, y(activeSeries[0]) - 10)}' text-anchor='middle' class='viz-axis-hint'>Active: ${Number(activeSeries[0] || 0)}</text>
+    <text x='${x(0)}' y='${Math.min(height - pad.bottom + 20, y(resolvedSeries[0]) + 18)}' text-anchor='middle' class='viz-axis-hint'>Resolved: ${Number(resolvedSeries[0] || 0)}</text>` : '';
 
   const grid = [0, 0.25, 0.5, 0.75, 1].map((r) => {
     const gy = pad.top + (plotH * r);
@@ -347,6 +356,9 @@ function renderLineChart(elId, labels, activeSeries, resolvedSeries) {
       ${grid}
       <path d='${toPath(activeSeries)}' fill='none' stroke='#2563eb' stroke-width='2.5' stroke-linecap='round'/>
       <path d='${toPath(resolvedSeries)}' fill='none' stroke='#22c55e' stroke-width='2.5' stroke-linecap='round'/>
+      ${points(activeSeries, '#2563eb', 'Active tickets')}
+      ${points(resolvedSeries, '#22c55e', 'Resolved or closed tickets')}
+      ${singlePeriodValues}
       ${labels.map((label, i) => `<text x='${x(i)}' y='${height - 14}' text-anchor='middle' class='viz-axis-label'>${escapeHtml(label)}</text>`).join('')}
       <text x='${pad.left}' y='${pad.top - 8}' class='viz-axis-hint'>0-${maxValue}</text>
     </svg>

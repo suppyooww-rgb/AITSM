@@ -203,6 +203,15 @@ class FrontendSafetyContractTest {
         assertTrue(dashboard.contains("metric.value >= 70 ? { tone: 'resolved', label: 'Stable' }"))
     }
 
+    @Test fun `ticket trend remains visible when only one period has data`() {
+        val dashboard = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/js/dashboard.js"))
+        assertTrue(dashboard.contains("labels.length === 1"))
+        assertTrue(dashboard.contains("points(activeSeries, '#2563eb', 'Active tickets')"))
+        assertTrue(dashboard.contains("points(resolvedSeries, '#22c55e', 'Resolved or closed tickets')"))
+        assertTrue(dashboard.contains("Active: ${'$'}{Number(activeSeries[0] || 0)}"))
+        assertTrue(dashboard.contains("Resolved: ${'$'}{Number(resolvedSeries[0] || 0)}"))
+    }
+
     @Test fun `collector actions use a zoom friendly overflow menu`() {
         val settingsHtml = Files.readString(Path.of("src/main/resources/static/frontend/settings/html/settings.html"))
         val settingsScript = Files.readString(Path.of("src/main/resources/static/frontend/settings/js/settings.js"))

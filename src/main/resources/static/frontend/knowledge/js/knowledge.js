@@ -1,5 +1,6 @@
 let knowledgeArticles = [];
 let editingArticleId = null;
+let knowledgeCandidates = [];
 function normalizeListResponse(payload) {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.data)) return payload.data;
@@ -108,6 +109,81 @@ async function loadKnowledge() {
   }
 }
 
+async function loadKnowledgeCandidates() {
+  const section = document.getElementById('knowledgeCandidateSection');
+  const host = document.getElementById('knowledgeCandidateList');
+  if (!section || !host || currentRole() !== 'superadmin') return;
+  section.classList.remove('hidden');
+  host.innerHTML = '<p class="small">Loading recurring-issue drafts…</p>';
+  try {
+    const response = await fetch('/api/knowledge/candidates', { headers: authHeaders() });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Unable to load recurring-issue drafts');
+    knowledgeCandidates = Array.isArray(data) ? data : [];
+    renderKnowledgeCandidates();
+  } catch (error) {
+    host.innerHTML = `<p class='small text-danger'>${aitsmEscapeHtml(error.message)}</p>`;
+  }
+}
+
+function renderKnowledgeCandidates() {
+  const host = document.getElementById('knowledgeCandidateList');
+  if (!host) return;
+  if (!knowledgeCandidates.length) {
+    host.innerHTML = '<p class="small">No recurring issues are waiting for review.</p>';
+    return;
+  }
+  host.innerHTML = knowledgeCandidates.map(candidate => {
+    const id = Number(candidate.id);
+    const sourceLinks = (candidate.sourceTicketIds || []).map(ticketId =>
+      `<a href='/ticket-management?ticketId=${Number(ticketId)}'>#${Number(ticketId)}</a>`
+    ).join(', ');
+    return `<article class='card' style='margin-top:12px;background:var(--surface-muted,#f8fafc)'>
+      <div class='card-head'>
+        <div>
+          <h4 class='section-title'>${Number(candidate.occurrenceCount)} similar resolved tickets</h4>
+          <p class='section-subtitle'>Sources: ${sourceLinks || 'Unavailable'}</p>
+        </div>
+        <span class='badge in-progress'>Awaiting Super Admin review</span>
+      </div>
+      <div class='form-grid'>
+        <div class='form-group'><label for='candidateTitle${id}'>Suggested title</label><input id='candidateTitle${id}' value='${aitsmEscapeHtml(candidate.title || '')}' maxlength='200'></div>
+        <div class='form-group'><label for='candidateCategory${id}'>Category</label><input id='candidateCategory${id}' value='${aitsmEscapeHtml(candidate.category || 'General')}' maxlength='100'></div>
+        <div class='form-group' style='grid-column:1/-1'><label for='candidateContent${id}'>Suggested article</label><textarea id='candidateContent${id}' maxlength='10000'>${aitsmEscapeHtml(candidate.content || '')}</textarea></div>
+      </div>
+      <div class='inline-actions' style='margin-top:12px'>
+        <button class='btn btn-primary' type='button' onclick='publishKnowledgeCandidate(${id})'>Publish reviewed article</button>
+        <button class='btn btn-ghost text-danger' type='button' onclick='dismissKnowledgeCandidate(${id})'>Dismiss suggestion</button>
+      </div>
+    </article>`;
+  }).join('');
+}
+
+async function publishKnowledgeCandidate(id) {
+  const body = {
+    title: (document.getElementById(`candidateTitle${id}`)?.value || '').trim(),
+    category: (document.getElementById(`candidateCategory${id}`)?.value || 'General').trim(),
+    content: (document.getElementById(`candidateContent${id}`)?.value || '').trim()
+  };
+  if (body.title.length < 5 || body.content.length < 10) return alert('Review the draft and provide a title and article content before publishing.');
+  if (!window.confirm('Publish this reviewed draft to the Knowledge Base?')) return;
+  const response = await fetch(`/api/knowledge/candidates/${Number(id)}/publish`, {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify(body)
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Unable to publish the recurring-issue draft');
+  await Promise.all([loadKnowledgeCandidates(), loadKnowledge()]);
+  alert('Reviewed article published successfully.');
+}
+
+async function dismissKnowledgeCandidate(id) {
+  if (!window.confirm('Dismiss this recurring-issue suggestion? Its source-ticket history will remain recorded.')) return;
+  const response = await fetch(`/api/knowledge/candidates/${Number(id)}/dismiss`, { method: 'POST', headers: authHeaders() });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Unable to dismiss the recurring-issue draft');
+  await loadKnowledgeCandidates();
+}
+
 function resetKnowledgeForm() {
   editingArticleId = null;
   document.getElementById('knowledgeFormTitle').textContent = 'Create Article';
@@ -170,7 +246,9 @@ async function deleteArticle(id) {
   alert(data.message || 'Article deleted');
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await window.aitsmReady;
   ensureKnowledgeModal();
   loadKnowledge();
+  loadKnowledgeCandidates();
 });

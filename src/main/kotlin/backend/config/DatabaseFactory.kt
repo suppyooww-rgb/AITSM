@@ -393,6 +393,41 @@ object KnowledgeArticlesTable : Table("knowledge_articles") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object KnowledgeIssuePatternsTable : Table("knowledge_issue_patterns") {
+    val id = integer("id").autoIncrement()
+    val category = varchar("category", 100).index()
+    val normalizedTerms = text("normalized_terms")
+    val representativeTitle = varchar("representative_title", 200)
+    val createdAt = datetime("created_at")
+    val updatedAt = datetime("updated_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+object KnowledgeIssueOccurrencesTable : Table("knowledge_issue_occurrences") {
+    val id = long("id").autoIncrement()
+    val patternId = integer("pattern_id").references(KnowledgeIssuePatternsTable.id, onDelete = ReferenceOption.CASCADE).index()
+    val ticketId = integer("ticket_id").references(TicketsTable.id, onDelete = ReferenceOption.CASCADE).uniqueIndex()
+    val resolution = text("resolution")
+    val createdAt = datetime("created_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+object KnowledgeCandidatesTable : Table("knowledge_candidates") {
+    val id = integer("id").autoIncrement()
+    val patternId = integer("pattern_id").references(KnowledgeIssuePatternsTable.id, onDelete = ReferenceOption.CASCADE).uniqueIndex()
+    val title = varchar("title", 200)
+    val content = text("content")
+    val category = varchar("category", 100)
+    val occurrenceCount = integer("occurrence_count")
+    val status = varchar("status", 20).default("READY").index()
+    val publishedArticleId = integer("published_article_id").references(KnowledgeArticlesTable.id, onDelete = ReferenceOption.SET_NULL).nullable()
+    val createdAt = datetime("created_at")
+    val updatedAt = datetime("updated_at")
+    val reviewedAt = datetime("reviewed_at").nullable()
+    val reviewedBy = integer("reviewed_by").references(UsersTable.id, onDelete = ReferenceOption.SET_NULL).nullable()
+    override val primaryKey = PrimaryKey(id)
+}
+
 object AuditLogsTable : Table("audit_logs") {
     val id = integer("id").autoIncrement()
     val userId = integer("user_id").nullable().index()
@@ -539,6 +574,9 @@ object DatabaseFactory {
                 SLAPoliciesTable,
                 SystemSettingsTable,
                 KnowledgeArticlesTable,
+                KnowledgeIssuePatternsTable,
+                KnowledgeIssueOccurrencesTable,
+                KnowledgeCandidatesTable,
                 AuditLogsTable,
                 AIConversationMessagesTable,
                 InventoryAssetsTable,

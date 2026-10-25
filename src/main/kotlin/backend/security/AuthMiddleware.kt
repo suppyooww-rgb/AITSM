@@ -156,7 +156,7 @@ internal fun isMfaRecoveryPath(path: String): Boolean =
         path.startsWith("/modules/") || path.startsWith("/api/auth/mfa/")
 
 internal fun isPasswordChangePath(path: String): Boolean = path in setOf(
-    "/api/auth/me", "/api/auth/csrf-token", "/api/auth/logout", "/api/users/me/password"
+    "/api/auth/login", "/api/auth/me", "/api/auth/csrf-token", "/api/auth/logout", "/api/users/me/password"
 )
 
 internal fun isAuthenticationPage(path: String): Boolean =

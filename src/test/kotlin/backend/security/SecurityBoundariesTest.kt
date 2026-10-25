@@ -84,6 +84,14 @@ class SecurityBoundariesTest {
         assertFalse(isMfaRecoveryPath("/uploads/profile-photos/example.png"))
     }
 
+    @Test fun `temporary password administrator can finish MFA login before changing password`() {
+        assertTrue(isPasswordChangePath("/api/auth/login"))
+        assertTrue(isPasswordChangePath("/api/auth/me"))
+        assertTrue(isPasswordChangePath("/api/users/me/password"))
+        assertFalse(isPasswordChangePath("/api/tickets"))
+        assertFalse(isPasswordChangePath("/api/users/2/reset-password"))
+    }
+
     @Test fun `public static assets do not perform session writes during parallel page loading`() {
         assertTrue(isPublicStaticAsset("/shared/css/styles.css", io.ktor.http.HttpMethod.Get))
         assertTrue(isPublicStaticAsset("/modules/common/js/app.js", io.ktor.http.HttpMethod.Get))

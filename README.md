@@ -1,6 +1,6 @@
-# AITSMSystem
+# AITSM
 
-AITSMSystem is an AI-assisted IT service management portal for ticket operations, SLA management, device inventory, Windows telemetry, knowledge management, notifications, and role-controlled administration.
+AITSM is an AI-assisted IT service management portal for ticket operations, SLA management, device inventory, Windows telemetry, knowledge management, notifications, and role-controlled administration.
 
 The current public environment is a beta system. Changes are validated in beta before an explicit production release to `aitsmportal.com`.
 

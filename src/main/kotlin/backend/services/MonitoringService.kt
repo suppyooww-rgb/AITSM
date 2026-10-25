@@ -34,8 +34,8 @@ class MonitoringService(
             require(it.name.isNotBlank() && it.name.length <= 150) { "Collector name is required and must be 150 characters or fewer." }
         }
     )
-    fun collectors() = repository.listCollectors()
-    fun collectorsForUser(userId: Int) = repository.listCollectors(userId)
+    fun collectors() = repository.listCollectors().map(CollectorVersionPolicy::apply)
+    fun collectorsForUser(userId: Int) = repository.listCollectors(userId).map(CollectorVersionPolicy::apply)
     fun collectorDiagnostics(rawId: String, ownerId: Int? = null): String? {
         val id = runCatching { UUID.fromString(rawId) }.getOrNull() ?: return null
         val collector = (if (ownerId == null) collectors() else collectorsForUser(ownerId))
@@ -56,6 +56,9 @@ class MonitoringService(
             appendLine("Enrolled: ${collector.enrolledAt}")
             appendLine("Last report: ${collector.lastSeenAt ?: "Never"}")
             appendLine("Agent version: ${collector.agentVersion ?: "Not reported (legacy installer)"}")
+            appendLine("Latest version: ${collector.latestAgentVersion}")
+            appendLine("Minimum supported version: ${collector.minimumSupportedAgentVersion}")
+            appendLine("Version status: ${collector.versionStatus}")
             appendLine("Service started: ${collector.serviceStartedAt ?: "Not reported"}")
             appendLine("Consecutive failures: ${collector.consecutiveFailures}")
             appendLine("Last reported error: ${collector.lastReportedError ?: "None"}")

@@ -17,7 +17,9 @@ class CollectorInstallerContractTest {
         assertContains(provider, "COLLECTOR_INSTALLER_SHA256")
         assertContains(provider, "checksum verification failed")
         assertContains(route, "CollectorInstallerProvider.openStream()")
-        assertContains(example, "releases/download/collector-v1.3.1/AITSMCollectorSetup.exe")
+        assertContains(example, "suppyooww-rgb/AITSM/releases/download/collector-v1.3.1/AITSMCollectorSetup.exe")
+        assertContains(example, "COLLECTOR_LATEST_VERSION=1.3.1")
+        assertContains(example, "COLLECTOR_MINIMUM_VERSION=1.3.0")
         assertContains(gitignore, "src/main/resources/collector/AITSMCollectorSetup.exe")
     }
 

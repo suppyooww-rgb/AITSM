@@ -237,7 +237,7 @@ fun Application.module() {
         profilePhotoRoutes(container.profilePhotoService)
         ticketRoutes(container.ticketService, container.slaAutomationService)
         monitoringRoutes(container.monitoringService, container.deviceRepo, container.assetDetectionService, container.inventoryService)
-        analyticsRoutes(container.ticketService, container.monitoringService, container.aiService)
+        analyticsRoutes(container.ticketService, container.monitoringService, container.aiService, container.reauthenticationService)
         deviceRoutes(container.deviceRepo, container.userRepo, container.monitoringService, container.assetDetectionService, container.inventoryService)
         notificationRoutes(container.notificationService)
         colleagueRoutes(container.colleagueService)

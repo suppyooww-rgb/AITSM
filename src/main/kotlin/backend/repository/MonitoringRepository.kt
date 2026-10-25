@@ -157,6 +157,27 @@ class MonitoringRepository(private val clock: Clock = Clock.systemUTC()) {
         }) { it[archivedAt] = now() } > 0
     }
 
+    fun remove(id: UUID): Boolean = transaction {
+        val removedAt = now()
+        MonitoringCollectorsTable.update({
+            (MonitoringCollectorsTable.id eq id) and MonitoringCollectorsTable.archivedAt.isNull()
+        }) {
+            it[revokedAt] = removedAt
+            it[archivedAt] = removedAt
+        } > 0
+    }
+
+    fun removeOwned(id: UUID, ownerId: Int): Boolean = transaction {
+        val removedAt = now()
+        MonitoringCollectorsTable.update({
+            (MonitoringCollectorsTable.id eq id) and (MonitoringCollectorsTable.ownerUserId eq ownerId) and
+                MonitoringCollectorsTable.archivedAt.isNull()
+        }) {
+            it[revokedAt] = removedAt
+            it[archivedAt] = removedAt
+        } > 0
+    }
+
     fun listCollectors(ownerId: Int? = null, includeArchived: Boolean = false): List<CollectorView> = transaction {
         val instantNow = clock.instant()
         val query = MonitoringCollectorsTable.selectAll().let { base ->

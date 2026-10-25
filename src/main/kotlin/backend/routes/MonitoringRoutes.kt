@@ -127,8 +127,8 @@ fun Route.monitoringRoutes(
         delete("/collectors/{id}") {
             if (!call.requireRole(UserRole.ADMIN)) return@delete
             val id = call.parameters["id"] ?: return@delete call.respond(HttpStatusCode.BadRequest, ApiErrorResponse(400, "Collector id is required"))
-            if (!runCatching { service.revoke(id) }.getOrDefault(false)) return@delete call.respond(HttpStatusCode.NotFound, ApiErrorResponse(404, "Collector not found"))
-            call.respond(mapOf("revoked" to true))
+            if (!runCatching { service.remove(id) }.getOrDefault(false)) return@delete call.respond(HttpStatusCode.NotFound, ApiErrorResponse(404, "Collector not found"))
+            call.respond(mapOf("removed" to true))
         }
         delete("/collectors/{id}/archive") {
             if (!call.requireRole(UserRole.ADMIN)) return@delete
@@ -142,10 +142,10 @@ fun Route.monitoringRoutes(
             if (!call.requireAuthenticated()) return@delete
             val actorId = call.userId() ?: return@delete call.respond(HttpStatusCode.Unauthorized)
             val id = call.parameters["id"] ?: return@delete call.respond(HttpStatusCode.BadRequest, ApiErrorResponse(400, "Collector id is required"))
-            if (!runCatching { service.revokeOwned(id, actorId) }.getOrDefault(false)) {
+            if (!runCatching { service.removeOwned(id, actorId) }.getOrDefault(false)) {
                 return@delete call.respond(HttpStatusCode.NotFound, ApiErrorResponse(404, "Collector not found"))
             }
-            call.respond(mapOf("revoked" to true))
+            call.respond(mapOf("removed" to true))
         }
 
         post("/client-metrics") {

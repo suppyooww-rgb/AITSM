@@ -174,8 +174,9 @@ async function loadAdminSelfCollectors() {
         <div class='small'>Agent ${escapeHtml(item.agentVersion || 'legacy')} · Failures ${Number(item.consecutiveFailures || 0)}</div>
       </div>
       <div class='inline-actions'>
-        <button class='btn btn-ghost' type='button' data-collector-action='diagnostics' data-collector-id='${escapeHtml(item.collectorId)}'>Diagnostics</button>
-        ${item.state === 'REVOKED' ? '' : `<button class='btn btn-ghost' type='button' data-collector-action='repair' data-collector-id='${escapeHtml(item.collectorId)}'>Repair</button><button class='btn btn-ghost' type='button' data-collector-action='remove' data-collector-id='${escapeHtml(item.collectorId)}'>Remove</button>`}
+        ${item.state === 'REVOKED'
+          ? `<button class='btn btn-ghost' type='button' data-collector-action='remove' data-collector-id='${escapeHtml(item.collectorId)}'>Remove</button>`
+          : `<button class='btn btn-ghost' type='button' data-collector-action='diagnostics' data-collector-id='${escapeHtml(item.collectorId)}'>Diagnostics</button><button class='btn btn-ghost' type='button' data-collector-action='repair' data-collector-id='${escapeHtml(item.collectorId)}'>Repair</button><button class='btn btn-ghost' type='button' data-collector-action='remove' data-collector-id='${escapeHtml(item.collectorId)}'>Remove</button>`}
       </div>
     </div>`).join('') : `<p class='small'>No SELF-scope collector installed for your Admin account.</p>`;
 }
@@ -427,7 +428,8 @@ function updateTrendControlState() {
 function getPriorityCounts(tickets) {
   const counts = { Critical: 0, High: 0, Medium: 0, Low: 0 };
   (Array.isArray(tickets) ? tickets : []).forEach((ticket) => {
-    const priority = String(ticket.priority || '').trim();
+    const rawPriority = String(ticket.priority || '').trim().toLowerCase();
+    const priority = rawPriority ? rawPriority.charAt(0).toUpperCase() + rawPriority.slice(1) : '';
     if (counts[priority] != null) counts[priority] += 1;
   });
   return counts;
@@ -477,10 +479,8 @@ function renderMetricCards() {
   const monitorSummary = dashboardState.monitoringSummary || {};
   const inventory = dashboardState.inventoryStats || {};
 
-  const activeCount = tickets.filter((ticket) => {
-    const status = normalizeTicketStatus(ticket.status);
-    return status === 'open' || status === 'in progress';
-  }).length;
+  const activeCount = tickets.filter((ticket) => normalizeTicketStatus(ticket.status) === 'open').length;
+  const inProgressCount = tickets.filter((ticket) => normalizeTicketStatus(ticket.status) === 'in progress').length;
 
   const resolvedCount = tickets.filter((ticket) => {
     const status = normalizeTicketStatus(ticket.status);
@@ -491,7 +491,8 @@ function renderMetricCards() {
   const cards = [
     ['TS', 'Total Assets', Number(inventory.total || 0), 'Registered inventory devices'],
     ['DD', 'Devices On LAN', Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0), 'Observed by the active LAN collector'],
-    ['AT', 'Active Tickets', activeCount, 'Open and in-progress requests'],
+    ['AT', 'Active Tickets', activeCount, 'Open requests awaiting work'],
+    ['IP', 'In Progress Tickets', inProgressCount, 'Requests currently being handled'],
     ['RC', 'Resolved Tickets', resolvedCount, 'Awaiting requester confirmation'],
     ['CC', 'Closed Tickets', closedCount, 'Completed and closed requests'],
     ['TC', 'Telemetry Coverage', `${Number(monitorSummary.telemetryAvailableDevices || 0)}/${Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0)}`, 'On-LAN devices with a telemetry stream'],
@@ -520,10 +521,7 @@ function renderOperationalReport() {
     return cpu >= 85 || memory >= 90;
   });
 
-  const activeTickets = tickets.filter((ticket) => {
-    const status = normalizeTicketStatus(ticket.status);
-    return status === 'open' || status === 'in progress';
-  }).length;
+  const inProgressTickets = tickets.filter((ticket) => normalizeTicketStatus(ticket.status) === 'in progress').length;
 
   const monthToken = dashboardState.trend.month === 'all'
     ? buildTrendData(tickets, { ...dashboardState.trend, view: 'monthly' }).effectiveMonth
@@ -545,7 +543,7 @@ function renderOperationalReport() {
     : '0%';
 
   const stats = [
-    ['Active Tickets', activeTickets, 'Tickets requiring current handling'],
+    ['In Progress Tickets', inProgressTickets, 'Tickets currently being handled'],
     ['Ticket Trend', resolutionRate, `${monthLabel(resolvedMonthToken)} resolution rate`],
     ['Operational Alerts', criticalAlerts.length, 'High CPU/memory devices'],
     ['Devices On LAN', Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0), 'Devices currently seen by LAN discovery']
@@ -626,6 +624,7 @@ function renderRecentAdminTickets(tickets) {
 
   const priorityOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
   const relevant = [...(Array.isArray(tickets) ? tickets : [])]
+    .filter((ticket) => ['critical', 'high'].includes(String(ticket.priority || '').trim().toLowerCase()))
     .sort((a, b) => {
       const priorityDiff = (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99);
       if (priorityDiff !== 0) return priorityDiff;
@@ -797,19 +796,19 @@ async function loadAdminDashboard() {
   if (recentRows) showTableSkeleton(recentRows, { rowCount: 6, columnCount: 5 });
 
   try {
-    const [ticketsPayload, monitorSummary, lanDevices, notifications, inventoryStats, slaAnalytics] = await Promise.all([
-      window.aitsmFetchAllPaginated('/api/tickets'),
-      fetchJsonOrThrow('/api/monitoring/summary'),
-      fetchJsonOrThrow('/api/monitoring/lan-devices'),
-      fetchJsonOrThrow('/api/notifications?page=1&pageSize=8'),
-      fetchJsonOrThrow('/api/inventory/stats'),
-      fetchJsonOrThrow('/api/sla/analytics')
+    const ticketsPayload = await window.aitsmFetchAllPaginated('/api/tickets');
+    const [monitorSummary, lanDevices, notifications, inventoryStats, slaAnalytics] = await Promise.all([
+      fetchJsonOrThrow('/api/monitoring/summary').catch(() => null),
+      fetchJsonOrThrow('/api/monitoring/lan-devices').catch(() => []),
+      fetchJsonOrThrow('/api/notifications?page=1&pageSize=8').catch(() => []),
+      fetchJsonOrThrow('/api/inventory/stats').catch(() => null),
+      fetchJsonOrThrow('/api/sla/analytics').catch(() => null)
     ]);
 
     dashboardState.tickets = normalizeTicketList(ticketsPayload);
     dashboardState.monitoringSummary = monitorSummary || null;
     dashboardState.lanDevices = Array.isArray(lanDevices) ? lanDevices : [];
-    dashboardState.notifications = Array.isArray(notifications) ? notifications : [];
+    dashboardState.notifications = Array.isArray(notifications?.items) ? notifications.items : (Array.isArray(notifications) ? notifications : []);
     dashboardState.inventoryStats = inventoryStats || null;
     dashboardState.slaAnalytics = slaAnalytics || null;
 

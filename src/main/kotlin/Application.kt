@@ -190,7 +190,6 @@ fun Application.module() {
             "/ticket-management" to "ticket-management/html/ticket-management.html",
             "/tickets" to "tickets/html/tickets.html",
             "/create-ticket" to "create-ticket/html/create-ticket.html",
-            "/assets" to "assets/html/assets.html",
             "/monitoring" to "monitoring/html/monitoring.html",
             "/inventory" to "inventory/html/inventory.html",
             "/knowledge" to "knowledge/html/knowledge.html",
@@ -207,6 +206,9 @@ fun Application.module() {
         get("/") { call.respondRedirect("/login") }
         get("/index.html") { call.respondRedirect("/login", permanent = true) }
         get("/index/html/index.html") { call.respondRedirect("/login", permanent = true) }
+        get("/assets") { call.redirectKeepingQuery("/inventory", permanent = true) }
+        get("/assets.html") { call.redirectKeepingQuery("/inventory", permanent = true) }
+        get("/assets/html/assets.html") { call.redirectKeepingQuery("/inventory", permanent = true) }
         pageResources.forEach { (cleanPath, resourcePath) ->
             get(cleanPath) {
                 val resource = frontendClassLoader.getResourceAsStream("static/frontend/$resourcePath")

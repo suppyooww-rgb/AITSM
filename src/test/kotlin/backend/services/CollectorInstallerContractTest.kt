@@ -52,7 +52,7 @@ class CollectorInstallerContractTest {
         assertTrue(service.contains("Self-device collectors may report exactly one device"))
         assertTrue(routes.contains("service.canDownloadPackage(request.enrollmentCode, actorId)"))
         assertTrue(routes.contains("service.canRepairCollector(request.repairCollectorId, actorId, call.userRole())"))
-        assertTrue(routes.contains("service.revokeOwned(id, actorId)"))
+        assertTrue(routes.contains("service.removeOwned(id, actorId)"))
         assertTrue(service.contains("repairCollectorId = repairCollectorId"))
         assertTrue(repository.contains("MonitoringCollectorsTable.scope eq \"LAN\""))
         assertTrue(repository.contains("No active company/LAN collector is enrolled."))
@@ -107,6 +107,17 @@ class CollectorInstallerContractTest {
         assertTrue(repository.contains("MonitoringCollectorsTable.archivedAt.isNull()"))
         assertTrue(routes.contains("/collectors/{id}/archive"))
         assertFalse(repository.contains("MonitoringCollectorsTable.deleteWhere"))
+    }
+
+    @Test fun `collector removal revokes and archives in one operation`() {
+        val repository = Files.readString(Path.of("src/main/kotlin/backend/repository/MonitoringRepository.kt"))
+        val routes = Files.readString(Path.of("src/main/kotlin/backend/routes/MonitoringRoutes.kt"))
+        assertTrue(repository.contains("fun remove(id: UUID)"))
+        assertTrue(repository.contains("fun removeOwned(id: UUID, ownerId: Int)"))
+        assertTrue(repository.contains("it[revokedAt] = removedAt"))
+        assertTrue(repository.contains("it[archivedAt] = removedAt"))
+        assertTrue(routes.contains("service.remove(id)"))
+        assertTrue(routes.contains("service.removeOwned(id, actorId)"))
     }
 
     @Test fun `local AI bridge is outbound authenticated LAN only and keeps ollama private`() {

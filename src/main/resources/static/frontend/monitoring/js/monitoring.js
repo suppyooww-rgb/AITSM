@@ -9,7 +9,8 @@ let monitoringDevicesCache = [];
 const monitoringFilters = {
   search: '',
   reachability: 'all',
-  sort: 'cpu-desc'
+  sort: 'cpu-desc',
+  includeHistory: false
 };
 
 function statusBadge(status) {
@@ -73,9 +74,9 @@ function applyMonitoringFilters(devices) {
       device.ipAddress
     ].map(normalizedMonitorText).some((token) => token.includes(search));
 
+    const presence = normalizedMonitorText(device.lanPresenceState).replace('_', '-');
     const matchesReachability = monitoringFilters.reachability === 'all'
-      || (monitoringFilters.reachability === 'online' && device.reachable)
-      || (monitoringFilters.reachability === 'offline' && !device.reachable);
+      || monitoringFilters.reachability === presence;
 
     return matchesSearch && matchesReachability;
   });
@@ -92,7 +93,15 @@ function applyMonitoringFilters(devices) {
 function renderMonitorTableCount(visibleCount, totalCount) {
   const el = document.getElementById('monitorTableCount');
   if (!el) return;
-  el.textContent = `${visibleCount} shown / ${totalCount} collector devices`;
+  const scope = monitoringFilters.includeHistory ? '30-day history' : 'current and recent';
+  el.textContent = `${visibleCount} shown / ${totalCount} ${scope} LAN observations`;
+}
+
+function updateLanHistoryButton() {
+  const button = document.getElementById('showLanHistoryBtn');
+  if (!button) return;
+  button.textContent = monitoringFilters.includeHistory ? 'Show current devices' : 'Show 30-day history';
+  button.setAttribute('aria-pressed', monitoringFilters.includeHistory ? 'true' : 'false');
 }
 
 function updateMonitoringLiveStatus(state = 'idle', message) {
@@ -120,20 +129,54 @@ function updateMonitoringLiveStatus(state = 'idle', message) {
 }
 
 function telemetryBadge(device) {
-  const label = device.stale ? 'Stale telemetry' : (device.telemetryAvailable ? (device.telemetrySourceType || 'Telemetry') : 'Unavailable');
-  const tone = device.telemetryAvailable && !device.stale ? 'resolved' : 'warning';
-  return `<span class='badge ${tone} monitor-telemetry-badge' title='${aitsmEscapeHtml(label)}'>${aitsmEscapeHtml(label)}</span>`;
+  const state = String(device.telemetryState || (device.telemetryAvailable ? 'AVAILABLE' : 'UNAVAILABLE')).toUpperCase();
+  const percentage = state === 'AVAILABLE' ? 100 : state === 'STALE' ? 50 : 0;
+  const tone = state === 'AVAILABLE' ? 'resolved' : 'warning';
+  const lastReport = device.lastTelemetryAt ? ` Last report: ${formatLastSeen(device.lastTelemetryAt)}.` : '';
+  const explanation = state === 'AVAILABLE'
+    ? 'Telemetry was received within the last two minutes.'
+    : state === 'STALE'
+      ? 'Telemetry has not been received for two to ten minutes.'
+      : state === 'OFFLINE'
+        ? 'Telemetry has not been received for more than ten minutes.'
+        : 'This LAN peer does not have a device collector.';
+  const advice = state === 'AVAILABLE'
+    ? 'No action needed.'
+    : state === 'STALE'
+      ? 'Check the collector connection.'
+      : state === 'OFFLINE'
+        ? 'Start or repair the collector.'
+        : 'Install the device collector.';
+  const details = `${advice} ${explanation}${lastReport}`;
+  return `<div class='monitor-telemetry-health'><span class='badge ${tone} monitor-telemetry-badge'>${percentage}%</span><span class='monitor-info-icon' role='img' tabindex='0' aria-label='${aitsmEscapeHtml(details)}' title='${aitsmEscapeHtml(details)}'>i</span></div>`;
+}
+
+function lanPresenceLabel(device) {
+  const state = String(device.lanPresenceState || (device.reachable ? 'ON_LAN' : 'OFFLINE')).toUpperCase();
+  return {
+    ON_LAN: 'On LAN',
+    OFF_LAN: 'Off LAN',
+    STALE: 'Stale',
+    OFFLINE: 'Offline',
+    UNKNOWN: 'Unknown'
+  }[state] || state.replaceAll('_', ' ');
 }
 
 function renderMonitorSummary(summary) {
   const wrap = document.getElementById('monitorSummary');
   if (!wrap) return;
 
+  const discoverable = Number(summary?.onLanDevices ?? summary?.monitoredDevices ?? 0);
+  const telemetryCoverage = discoverable > 0
+    ? Math.round((Number(summary?.telemetryAvailableDevices || 0) / discoverable) * 100)
+    : 0;
+
   const chips = [
-    ['Collector Devices', summary?.totalDiscovered ?? 0],
-    ['Monitored Devices', summary?.monitoredDevices ?? 0],
-    ['Telemetry Available', summary?.telemetryAvailableDevices ?? 0],
-    ['Collector', String(summary?.collectorState || 'NOT_ENROLLED').replaceAll('_', ' ')]
+    ['On LAN', summary?.onLanDevices ?? 0],
+    ['Off LAN', summary?.offLanDevices ?? 0],
+    ['Stale / Offline', Number(summary?.staleDevices ?? 0) + Number(summary?.offlineDevices ?? 0)],
+    ['Telemetry Coverage', `${Math.min(100, telemetryCoverage)}%`],
+    ['LAN Collector', String(summary?.collectorState || 'NOT_ENROLLED').replaceAll('_', ' ')]
   ];
 
   wrap.innerHTML = chips.map(([label, value]) => `<div class='kpi-chip'><div class='kpi-label'>${label}</div><div class='kpi-value'>${value}</div></div>`).join('');
@@ -143,15 +186,22 @@ function renderMonitoringHealthPanel(summary, devices) {
   const panel = document.getElementById('monitorHealthPanel');
   if (!panel) return;
 
-  const available = devices.filter(d => d.telemetryAvailable).length;
+  const available = devices.filter(d => d.telemetryState === 'AVAILABLE').length;
+  const coverage = devices.length ? Math.round((available / devices.length) * 100) : 0;
+  const missing = Math.max(0, devices.length - available);
+  const telemetryAdvice = devices.length === 0
+    ? 'No current LAN devices are available for telemetry assessment.'
+    : missing === 0
+      ? 'All current LAN devices are reporting telemetry.'
+      : `Review the ${missing} ${missing === 1 ? 'device' : 'devices'} without current telemetry; install or repair collectors where they are company-managed.`;
   const collectorState = String(summary?.collectorState || 'NOT_ENROLLED').replaceAll('_', ' ');
   const lastUpdate = summary?.timestamp;
   panel.innerHTML = `
     <div class='insight-grid monitor-health-grid'>
       <div class='insight-item'><div class='insight-label'>Collector health</div><div class='insight-value monitor-text-wrap'>${aitsmEscapeHtml(collectorState)}</div></div>
       <div class='insight-item'><div class='insight-label'>LAN scan</div><div class='insight-value'>${aitsmEscapeHtml(String(summary?.discoveryState || 'NEVER').replaceAll('_', ' '))}</div></div>
-      <div class='insight-item'><div class='insight-label'>Telemetry coverage</div><div class='insight-value'>${available}/${devices.length}</div></div>
-      <div class='insight-item'><div class='insight-label'>Last data received</div><div class='insight-value monitor-text-wrap monitor-updated-at'>${formatLastSeen(lastUpdate)}</div></div>
+      <div class='insight-item'><div class='insight-label'>Telemetry coverage</div><div class='insight-value'>${coverage}%</div><div class='small monitor-text-wrap'>${aitsmEscapeHtml(telemetryAdvice)}</div></div>
+      <div class='insight-item'><div class='insight-label'>Last LAN report</div><div class='insight-value monitor-text-wrap monitor-updated-at'>${formatLastSeen(lastUpdate)}</div></div>
     </div>`;
 }
 
@@ -181,7 +231,7 @@ function renderMonitorCards(devices) {
       <div class='small monitor-device-meta'>
         <span class='monitor-text-wrap'>${aitsmEscapeHtml(d.ipAddress || '-')}</span>
         <span class='monitor-meta-separator' aria-hidden='true'>•</span>
-        <span>Reachable: ${d.reachable ? 'Yes' : 'No'}</span>
+        <span>LAN: ${aitsmEscapeHtml(lanPresenceLabel(d))}</span>
       </div>
       <div class='insight-grid monitor-device-stats'>
         <div class='insight-item'><div class='insight-label'>CPU</div><div class='insight-value'>${d.cpuUsagePercent != null ? `${Number(d.cpuUsagePercent).toFixed(1)}%` : 'N/A'}</div></div>
@@ -190,7 +240,7 @@ function renderMonitorCards(devices) {
     </article>`).join('');
 
   if (devices.length > highlight.length) {
-    wrap.innerHTML += `<div class='small'>Showing top ${highlight.length} devices by utilization out of ${devices.length} collector-managed devices.</div>`;
+    wrap.innerHTML += `<div class='small'>Showing ${highlight.length} highlighted devices out of ${devices.length} LAN observations.</div>`;
   }
 }
 
@@ -202,17 +252,18 @@ function renderMonitorTable(devices) {
   renderMonitorTableCount(visible.length, devices.length);
 
   if (!visible.length) {
-    renderTableEmptyState(rows, 6, devices.length ? 'No devices matched the current filters.' : 'No collector-managed devices are reporting yet.');
+    renderTableEmptyState(rows, 7, devices.length ? 'No devices matched the current filters.' : 'No devices have been observed by an active LAN collector yet.');
     return;
   }
 
   rows.innerHTML = visible.map(d => `<tr>
     <td>${aitsmEscapeHtml(d.hostname || '-')}</td>
     <td title='${aitsmEscapeHtml(`Observed IPs: ${(d.observedIpAddresses || [d.ipAddress]).join(', ')}`)}'>${aitsmEscapeHtml(d.ipAddress || '-')}${(d.observedIpAddresses || []).length > 1 ? `<div class='small'>${d.observedIpAddresses.length} addresses observed</div>` : ''}</td>
-    <td>${d.stale ? 'Stale' : (d.reachable ? 'Online' : 'Offline')}</td>
+    <td><span class='badge ${statusBadge(d.lanPresenceState === 'ON_LAN' ? 'online' : 'unreachable')}'>${aitsmEscapeHtml(lanPresenceLabel(d))}</span></td>
+    <td class='monitor-telemetry-cell'>${telemetryBadge(d)}</td>
     <td>${d.cpuUsagePercent != null ? `${Number(d.cpuUsagePercent).toFixed(1)}%` : '-'}</td>
     <td>${d.memoryUsagePercent != null ? `${Number(d.memoryUsagePercent).toFixed(1)}%` : '-'}</td>
-    <td>${formatLastSeen(d.lastSeen)}</td>
+    <td>${formatLastSeen(d.lastLanSeenAt || d.lastSeen)}</td>
   </tr>`).join('');
 }
 
@@ -260,12 +311,12 @@ async function loadMonitoring({ force = false, source = 'manual' } = {}) {
   monitoringRefreshInFlight = true;
   updateMonitoringLiveStatus('loading');
   const monitorRows = document.getElementById('monitorTableRows');
-  if (monitorRows) showTableSkeleton(monitorRows, { rowCount: 6, columnCount: 6 });
+  if (monitorRows) showTableSkeleton(monitorRows, { rowCount: 6, columnCount: 7 });
 
   try {
     const [summaryRes, devicesRes, peerIpsRes] = await Promise.all([
       fetch('/api/monitoring/summary', { headers: authHeaders() }),
-      fetch('/api/monitoring/lan-devices', { headers: authHeaders() }),
+      fetch(`/api/monitoring/lan-devices${monitoringFilters.includeHistory ? '?history=true' : ''}`, { headers: authHeaders() }),
       fetch('/api/monitoring/lan-peer-ips', { headers: authHeaders() })
     ]);
 
@@ -278,9 +329,12 @@ async function loadMonitoring({ force = false, source = 'manual' } = {}) {
     const safePeerIps = Array.isArray(peerIps) ? peerIps : [];
     monitoringDevicesCache = safeDevices;
 
+    const currentDevices = safeDevices.filter((device) => device.lanPresenceState !== 'UNKNOWN'
+      && (device.lanPresenceState !== 'OFFLINE'
+        || parseDateValue(device.lastLanSeenAt || device.lastSeen) > Date.now() - (24 * 60 * 60 * 1000)));
     renderMonitorSummary(summary);
-    renderMonitoringHealthPanel(summary, monitoringDevicesCache);
-    renderMonitorCards(monitoringDevicesCache);
+    renderMonitoringHealthPanel(summary, currentDevices);
+    renderMonitorCards(currentDevices);
     if (monitorRows) clearTableSkeleton(monitorRows);
     renderMonitorTable(monitoringDevicesCache);
     renderLanIpSuggestions(safePeerIps);
@@ -294,7 +348,7 @@ async function loadMonitoring({ force = false, source = 'manual' } = {}) {
   } catch {
     monitoringDevicesCache = [];
     renderMonitorTableCount(0, 0);
-    if (monitorRows) renderTableErrorState(monitorRows, 6, 'Unable to load monitoring table data.');
+    if (monitorRows) renderTableErrorState(monitorRows, 7, 'Unable to load monitoring table data.');
     updateMonitoringLiveStatus('error');
   } finally {
     if (monitorRows) clearTableSkeleton(monitorRows);
@@ -502,6 +556,7 @@ function wireMonitoringTableFilters() {
   const search = document.getElementById('monitorSearchInput');
   const reachability = document.getElementById('monitorReachabilityFilter');
   const sort = document.getElementById('monitorSortSelect');
+  const history = document.getElementById('showLanHistoryBtn');
 
   if (search) {
     search.addEventListener('input', () => {
@@ -523,6 +578,15 @@ function wireMonitoringTableFilters() {
     sort.addEventListener('change', () => {
       monitoringFilters.sort = sort.value || 'cpu-desc';
       renderMonitorTable(monitoringDevicesCache);
+    });
+  }
+
+  if (history) {
+    updateLanHistoryButton();
+    history.addEventListener('click', async () => {
+      monitoringFilters.includeHistory = !monitoringFilters.includeHistory;
+      updateLanHistoryButton();
+      await loadMonitoring({ force: true, source: 'history' });
     });
   }
 }

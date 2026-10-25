@@ -1,5 +1,17 @@
+function normalizeUserTicketStatus(status) {
+  const normalized = String(status || '').trim().replaceAll('_', ' ').toLowerCase();
+  if (normalized === 'pending') return 'in progress';
+  if (normalized === 'cancelled' || normalized === 'canceled') return 'closed';
+  return normalized;
+}
+
+function userTicketStatusLabel(status) {
+  const normalized = normalizeUserTicketStatus(status);
+  return normalized ? normalized.replace(/\b\w/g, char => char.toUpperCase()) : 'Unknown';
+}
+
 function badgeClassForStatus(status) {
-  const normalized = (status || '').toLowerCase();
+  const normalized = normalizeUserTicketStatus(status);
   if (normalized === 'open') return 'open';
   if (normalized === 'in progress') return 'in-progress';
   if (normalized === 'resolved') return 'resolved';
@@ -22,15 +34,18 @@ function renderUserSummary(tickets) {
   if (!el) return;
 
   const safeTickets = Array.isArray(tickets) ? tickets : [];
-  const open = safeTickets.filter(t => t.status === 'Open').length;
-  const inProgress = safeTickets.filter(t => t.status === 'In Progress').length;
-  const resolved = safeTickets.filter(t => t.status === 'Resolved').length;
+  const normalized = safeTickets.map(ticket => normalizeUserTicketStatus(ticket.status));
+  const open = normalized.filter(status => status === 'open').length;
+  const inProgress = normalized.filter(status => status === 'in progress').length;
+  const resolved = normalized.filter(status => status === 'resolved').length;
+  const closed = normalized.filter(status => status === 'closed').length;
 
   const cards = [
     ['◧', 'Total Tickets', safeTickets.length, 'All tickets you submitted'],
     ['◍', 'Open', open, 'Awaiting assignment or triage'],
     ['◔', 'In Progress', inProgress, 'Currently worked by support'],
-    ['✓', 'Resolved', resolved, 'Completed requests']
+    ['✓', 'Resolved', resolved, 'Waiting for your confirmation'],
+    ['●', 'Closed', closed, 'Completed and closed requests']
   ];
 
   el.innerHTML = cards.map(([icon, label, value, hint]) => `
@@ -56,7 +71,7 @@ function renderRecentTickets(tickets) {
       <td><a class='ticket-link' href='${userTicketHref(t.id)}'>#${Number(t.id)}</a></td>
       <td><a class='ticket-link ticket-link-title' href='${userTicketHref(t.id)}' title='${aitsmEscapeHtml(t.title || '-')}'>${aitsmEscapeHtml(t.title || '-')}</a></td>
       <td>${aitsmEscapeHtml(t.priority || '-')}</td>
-      <td><span class='badge ${badgeClassForStatus(t.status)}'>${aitsmEscapeHtml(t.status || 'Unknown')}</span></td>
+      <td><span class='badge ${badgeClassForStatus(t.status)}'>${aitsmEscapeHtml(userTicketStatusLabel(t.status))}</span></td>
       <td>${aitsmEscapeHtml(formatDateTime(t.updatedAt))}</td>
     </tr>
   `).join('');
@@ -128,7 +143,7 @@ async function loadMyCollectors() {
   const collectors = await response.json();
   if (!response.ok) throw new Error(collectors.error || 'Unable to load collectors');
   myCollectorRecords = new Map(collectors.map(item => [item.collectorId, item]));
-  target.innerHTML = collectors.length ? collectors.map(item => `<div class='insight-item'><div><strong>${aitsmEscapeHtml(item.name)}</strong><div class='small'>${aitsmEscapeHtml(item.state)} · ${item.lastSeenAt ? aitsmEscapeHtml(formatDateTime(item.lastSeenAt)) : 'Never connected'}</div><div class='small'>${aitsmEscapeHtml(item.statusReason || '')}</div><div class='small'>Agent ${aitsmEscapeHtml(item.agentVersion || 'legacy')} · Failures ${Number(item.consecutiveFailures || 0)}</div>${item.lastReportedError ? `<div class='small text-danger'>Last error: ${aitsmEscapeHtml(item.lastReportedError)}</div>` : ''}</div><div class='inline-actions'><button class='btn btn-ghost' type='button' onclick='downloadMyCollectorDiagnostics("${item.collectorId}")'>Diagnostics</button>${item.state === 'REVOKED' ? '' : `<button class='btn btn-ghost' type='button' onclick='repairMyCollector("${item.collectorId}")'>Repair</button><button class='btn btn-ghost' type='button' onclick='revokeMyCollector("${item.collectorId}")'>Remove</button>`}</div></div>`).join('') : `<p class='small'>No collector installed for your account.</p>`;
+  target.innerHTML = collectors.length ? collectors.map(item => `<div class='insight-item'><div><strong>${aitsmEscapeHtml(item.name)}</strong><div class='small'>${aitsmEscapeHtml(item.state)} · ${item.lastSeenAt ? aitsmEscapeHtml(formatDateTime(item.lastSeenAt)) : 'Never connected'}</div><div class='small'>${aitsmEscapeHtml(item.statusReason || '')}</div><div class='small'>Agent ${aitsmEscapeHtml(item.agentVersion || 'legacy')} · ${aitsmEscapeHtml(String(item.versionStatus || 'unknown').replaceAll('_', ' ').toLowerCase())} · Latest ${aitsmEscapeHtml(item.latestAgentVersion || 'unknown')} · Failures ${Number(item.consecutiveFailures || 0)}</div>${item.updateRequired ? `<div class='small text-danger'>Collector update required.</div>` : item.versionStatus === 'UPDATE_AVAILABLE' ? `<div class='small'>Collector update available.</div>` : ''}${item.lastReportedError ? `<div class='small text-danger'>Last error: ${aitsmEscapeHtml(item.lastReportedError)}</div>` : ''}</div><div class='inline-actions'><button class='btn btn-ghost' type='button' onclick='downloadMyCollectorDiagnostics("${item.collectorId}")'>Diagnostics</button>${item.state === 'REVOKED' ? '' : `<button class='btn btn-ghost' type='button' onclick='repairMyCollector("${item.collectorId}")'>${item.versionStatus === 'CURRENT' ? 'Repair' : 'Update / Repair'}</button><button class='btn btn-ghost' type='button' onclick='revokeMyCollector("${item.collectorId}")'>Remove</button>`}</div></div>`).join('') : `<p class='small'>No collector installed for your account.</p>`;
 }
 
 async function revokeMyCollector(id) {

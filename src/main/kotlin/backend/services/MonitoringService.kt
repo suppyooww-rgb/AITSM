@@ -34,8 +34,8 @@ class MonitoringService(
             require(it.name.isNotBlank() && it.name.length <= 150) { "Collector name is required and must be 150 characters or fewer." }
         }
     )
-    fun collectors() = repository.listCollectors()
-    fun collectorsForUser(userId: Int) = repository.listCollectors(userId)
+    fun collectors() = repository.listCollectors().map(CollectorVersionPolicy::apply)
+    fun collectorsForUser(userId: Int) = repository.listCollectors(userId).map(CollectorVersionPolicy::apply)
     fun collectorDiagnostics(rawId: String, ownerId: Int? = null): String? {
         val id = runCatching { UUID.fromString(rawId) }.getOrNull() ?: return null
         val collector = (if (ownerId == null) collectors() else collectorsForUser(ownerId))
@@ -56,6 +56,9 @@ class MonitoringService(
             appendLine("Enrolled: ${collector.enrolledAt}")
             appendLine("Last report: ${collector.lastSeenAt ?: "Never"}")
             appendLine("Agent version: ${collector.agentVersion ?: "Not reported (legacy installer)"}")
+            appendLine("Latest version: ${collector.latestAgentVersion}")
+            appendLine("Minimum supported version: ${collector.minimumSupportedAgentVersion}")
+            appendLine("Version status: ${collector.versionStatus}")
             appendLine("Service started: ${collector.serviceStartedAt ?: "Not reported"}")
             appendLine("Consecutive failures: ${collector.consecutiveFailures}")
             appendLine("Last reported error: ${collector.lastReportedError ?: "None"}")
@@ -70,8 +73,8 @@ class MonitoringService(
     }
     fun createPackage(userId: Int, role: UserRole, request: CollectorPackageRequest) = run {
         val requestedScope = request.scope.trim().uppercase()
-        val admin = role in setOf(UserRole.ADMIN, UserRole.IT_ADMIN, UserRole.SUPERADMIN)
-        val scope = if (admin) requestedScope else "SELF"
+        val canUseLanScope = role == UserRole.SUPERADMIN
+        val scope = if (canUseLanScope) requestedScope else "SELF"
         require(scope in setOf("SELF", "LAN")) { "Collector scope must be SELF or LAN." }
         val site = request.siteId.trim().ifBlank { if (scope == "SELF") "self-device" else "company-lan" }
         val name = request.name.trim()
@@ -93,33 +96,40 @@ class MonitoringService(
     fun canDownloadPackage(code: String, userId: Int) = repository.enrollmentCodeBelongsTo(code.trim(), userId)
     fun canRepairCollector(rawId: String, userId: Int, role: UserRole, expectedScope: String? = null): Boolean {
         val id = runCatching { UUID.fromString(rawId) }.getOrNull()?.toString() ?: return false
-        val admin = role in setOf(UserRole.ADMIN, UserRole.IT_ADMIN, UserRole.SUPERADMIN)
-        val collector = (if (admin) collectors() else collectorsForUser(userId)).firstOrNull { it.collectorId == id }
+        val collector = (if (role == UserRole.SUPERADMIN) collectors() else collectorsForUser(userId))
+            .firstOrNull { it.collectorId == id }
             ?: return false
         return collector.state !in setOf("REVOKED", "ARCHIVED") &&
             (expectedScope == null || collector.scope == expectedScope)
     }
     fun revoke(rawId: String): Boolean = repository.revoke(UUID.fromString(rawId))
     fun archive(rawId: String): Boolean = repository.archive(UUID.fromString(rawId))
+    fun remove(rawId: String): Boolean = repository.remove(UUID.fromString(rawId))
+    fun removeOwned(rawId: String, userId: Int): Boolean = repository.removeOwned(UUID.fromString(rawId), userId)
     fun revokeOwned(rawId: String, userId: Int): Boolean = repository.revokeOwned(UUID.fromString(rawId), userId)
     fun devices() = visibleCollectorDevices(deduplicatedLiveDevices(repository.devices()))
-    fun lanDevices() = devices()
-    fun lanPeerIps() = devices().map { it.ipAddress }.distinct().sorted()
+    fun lanDevices(includeHistory: Boolean = false) = repository.lanDevices(includeHistory)
+    fun lanPeerIps() = lanDevices().filter { it.lanPresenceState == "ON_LAN" }.map { it.ipAddress }.distinct().sorted()
     fun cpu() = devices().filter { it.telemetryAvailable }.map { mapOf("device" to it.hostname, "cpu" to (it.cpuUsagePercent?.toString() ?: "unavailable")) }
     fun alerts() = devices().filter { (it.cpuUsagePercent ?: 0.0) > 85 || (it.memoryUsagePercent ?: 0.0) > 90 }
         .map { mapOf("device" to it.hostname, "message" to "High resource usage reported by collector") }
 
     fun summary(): MonitoringSummaryDto {
-        val devices = devices()
-        val collectors = collectors().filter { it.state != "REVOKED" }
+        val devices = lanDevices()
+        val collectors = collectors().filter { it.scope == "LAN" && it.state !in setOf("REVOKED", "ARCHIVED") }
         val newest = collectors.maxByOrNull { it.lastSeenAt ?: it.enrolledAt }
         val discovery = repository.latestDiscovery()
         return MonitoringSummaryDto(
-            totalDiscovered = devices.size, monitoredDevices = devices.count { it.reachable },
+            totalDiscovered = devices.size, monitoredDevices = devices.count { it.lanPresenceState == "ON_LAN" },
             telemetryAvailableDevices = devices.count { it.telemetryAvailable && !it.stale }, hostTelemetry = null,
             timestamp = devices.mapNotNull { it.receivedAt }.maxOrNull(), collectorState = newest?.state ?: "NOT_ENROLLED",
             collectorLastSeenAt = newest?.lastSeenAt, discoveryState = discovery.first,
-            discoveryCompletedAt = discovery.second, serviceHealthCheckedAt = clock.instant().toString()
+            discoveryCompletedAt = discovery.second, serviceHealthCheckedAt = clock.instant().toString(),
+            onLanDevices = devices.count { it.lanPresenceState == "ON_LAN" },
+            staleDevices = devices.count { it.lanPresenceState == "STALE" },
+            offlineDevices = devices.count { it.lanPresenceState == "OFFLINE" },
+            offLanDevices = devices.count { it.lanPresenceState == "OFF_LAN" },
+            unknownDevices = devices.count { it.lanPresenceState == "UNKNOWN" }
         )
     }
 
@@ -142,9 +152,14 @@ class MonitoringService(
         require((report.agentVersion?.length ?: 0) <= 40) { "Agent version is too long." }
         require((report.previousError?.length ?: 0) <= 500) { "Collector diagnostic error is too long." }
         require(report.consecutiveFailures in 0..100_000) { "Collector failure count is invalid." }
-        report.devices.forEach { validateDevice(it, collector.scope) }
-        val (receivedAt, count) = repository.saveReport(collector.id, report, measuredAt)
-        report.devices.filter { it.telemetryAvailable && it.inventory != null }.forEach { device ->
+        val acceptedDevices = if (collector.scope == "LAN") {
+            val cidrs = assetDetectionService.getConfiguredPrivateCidrs()
+            report.devices.filter { isUsableLanHost(it.ipAddress, cidrs) }
+        } else report.devices
+        acceptedDevices.forEach { validateDevice(it, collector.scope) }
+        val acceptedReport = report.copy(devices = acceptedDevices)
+        val (receivedAt, count) = repository.saveReport(collector.id, collector.scope, acceptedReport, measuredAt)
+        acceptedDevices.filter { it.telemetryAvailable && it.inventory != null }.forEach { device ->
             inventoryService.upsertDetectedAsset(device.toInventoryUpsert(), saveSnapshot = false)
         }
         return CollectorReportResponse(true, receivedAt.toString(), count)
@@ -198,6 +213,26 @@ class MonitoringService(
             ((bytes[0].toInt() and 0xff) == 192 && (bytes[1].toInt() and 0xff) == 168))
     }.getOrDefault(false)
 }
+
+internal fun isUsableLanHost(value: String, cidrs: List<String>): Boolean = runCatching {
+    val octets = value.split('.').map(String::toInt)
+    if (octets.size != 4 || octets.any { it !in 0..255 } || octets.first() in setOf(0, 127) || octets.first() >= 224) {
+        return@runCatching false
+    }
+    val address = octets.fold(0L) { result, octet -> (result shl 8) or octet.toLong() }
+    cidrs.any { cidr ->
+        val parts = cidr.split('/')
+        if (parts.size != 2) return@any false
+        val prefix = parts[1].toIntOrNull()?.takeIf { it in 0..32 } ?: return@any false
+        val networkOctets = parts[0].split('.').mapNotNull(String::toIntOrNull)
+        if (networkOctets.size != 4 || networkOctets.any { it !in 0..255 }) return@any false
+        val configured = networkOctets.fold(0L) { result, octet -> (result shl 8) or octet.toLong() }
+        val mask = if (prefix == 0) 0L else (0xffffffffL shl (32 - prefix)) and 0xffffffffL
+        val network = configured and mask
+        val broadcast = network or (0xffffffffL xor mask)
+        (address and mask) == network && (prefix >= 31 || (address != network && address != broadcast))
+    }
+}.getOrDefault(false)
 
 internal fun preferredLiveDevicesByIp(devices: List<backend.models.LanDeviceDto>): Map<String, backend.models.LanDeviceDto> =
     deduplicatedLiveDevices(devices).associateBy { it.ipAddress }

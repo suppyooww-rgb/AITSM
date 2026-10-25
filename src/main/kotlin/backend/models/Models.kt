@@ -63,6 +63,7 @@ data class User(
     val role: UserRole,
     val emailVerified: Boolean = false,
     val accountState: AccountState = AccountState.PENDING_VERIFICATION,
+    val mustChangePassword: Boolean = false,
     val createdAt: String
 )
 
@@ -193,6 +194,16 @@ data class Ticket(
 )
 @Serializable data class TicketResolutionUpdate(val resolution: String)
 @Serializable data class TicketAssignmentUpdate(val assigneeUserId: Int? = null, val note: String? = null)
+@Serializable data class TicketAttachment(
+    val id: String,
+    val ticketId: Int,
+    val originalName: String,
+    val contentType: String,
+    val sizeBytes: Int,
+    val uploadedBy: Int,
+    val createdAt: String,
+    val downloadUrl: String
+)
 @Serializable data class TicketHistoryEvent(
     val status: String,
     val previousStatus: String? = null,
@@ -260,7 +271,11 @@ data class HostTelemetryDto(
     val lastReportedError: String? = null, val consecutiveFailures: Int = 0,
     val aiBridgeEnabled: Boolean = false, val aiBridgeAvailable: Boolean = false,
     val aiBridgeLastSeenAt: String? = null, val aiBridgeModel: String? = null,
-    val aiBridgeLastError: String? = null
+    val aiBridgeLastError: String? = null,
+    val latestAgentVersion: String = "1.3.1",
+    val minimumSupportedAgentVersion: String = "1.3.0",
+    val versionStatus: String = "UNKNOWN",
+    val updateRequired: Boolean = false
 )
 @Serializable data class CollectorDeviceReport(
     val deviceKey: String, val hostname: String, val ipAddress: String, val macAddress: String? = null,
@@ -326,7 +341,12 @@ data class HostTelemetryDto(
     val storageUsedBytes: Long? = null,
     val identityKey: String? = null,
     val deviceUuid: String? = null,
-    val observedIpAddresses: List<String> = emptyList()
+    val observedIpAddresses: List<String> = emptyList(),
+    val lanPresenceState: String = if (stale) "STALE" else if (reachable) "ON_LAN" else "OFFLINE",
+    val telemetryState: String = if (telemetryAvailable) "AVAILABLE" else "UNAVAILABLE",
+    val lastLanSeenAt: String? = lastSeen,
+    val lastTelemetryAt: String? = null,
+    val collectorSiteId: String? = null
 )
 
 @Serializable
@@ -340,7 +360,12 @@ data class HostTelemetryDto(
     val collectorLastSeenAt: String? = null,
     val discoveryState: String = "NEVER",
     val discoveryCompletedAt: String? = null,
-    val serviceHealthCheckedAt: String
+    val serviceHealthCheckedAt: String,
+    val onLanDevices: Int = 0,
+    val staleDevices: Int = 0,
+    val offlineDevices: Int = 0,
+    val offLanDevices: Int = 0,
+    val unknownDevices: Int = 0
 )
 
 @Serializable
@@ -390,6 +415,20 @@ data class NotificationPage(
 )
 @Serializable data class KnowledgeArticle(val id: Int, val title: String, val content: String, val category: String, val createdAt: String)
 @Serializable data class KnowledgeRequest(val title: String, val content: String, val category: String)
+@Serializable data class KnowledgeCandidate(
+    val id: Int,
+    val title: String,
+    val content: String,
+    val category: String,
+    val occurrenceCount: Int,
+    val sourceTicketIds: List<Int>,
+    val status: String,
+    val publishedArticleId: Int? = null,
+    val createdAt: String,
+    val updatedAt: String,
+    val reviewedAt: String? = null
+)
+@Serializable data class KnowledgePublicationResponse(val candidate: KnowledgeCandidate, val article: KnowledgeArticle)
 @Serializable data class AuditLog(val id: Int, val userId: Int?, val action: String, val entity: String, val timestamp: String, val target: String? = null, val result: String = "SUCCESS", val requestId: String? = null, val sourceIp: String? = null, val userAgent: String? = null, val metadata: String? = null)
 
 @Serializable data class TroubleshootingResponse(val suggestions: List<String>)

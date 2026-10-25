@@ -17,7 +17,9 @@ class CollectorInstallerContractTest {
         assertContains(provider, "COLLECTOR_INSTALLER_SHA256")
         assertContains(provider, "checksum verification failed")
         assertContains(route, "CollectorInstallerProvider.openStream()")
-        assertContains(example, "releases/download/collector-v1.3.1/AITSMCollectorSetup.exe")
+        assertContains(example, "suppyooww-rgb/AITSM/releases/download/collector-v1.3.1/AITSMCollectorSetup.exe")
+        assertContains(example, "COLLECTOR_LATEST_VERSION=1.3.1")
+        assertContains(example, "COLLECTOR_MINIMUM_VERSION=1.3.0")
         assertContains(gitignore, "src/main/resources/collector/AITSMCollectorSetup.exe")
     }
 
@@ -45,12 +47,14 @@ class CollectorInstallerContractTest {
         val service = Files.readString(Path.of("src/main/kotlin/backend/services/MonitoringService.kt"))
         val routes = Files.readString(Path.of("src/main/kotlin/backend/routes/MonitoringRoutes.kt"))
         val repository = Files.readString(Path.of("src/main/kotlin/backend/repository/MonitoringRepository.kt"))
-        assertTrue(service.contains("val scope = if (admin) requestedScope else \"SELF\""))
+        assertTrue(service.contains("val canUseLanScope = role == UserRole.SUPERADMIN"))
+        assertTrue(service.contains("val scope = if (canUseLanScope) requestedScope else \"SELF\""))
+        assertTrue(service.contains("if (role == UserRole.SUPERADMIN) collectors() else collectorsForUser(userId)"))
         assertTrue(service.contains("if (collector.scope != \"LAN\") return null"))
         assertTrue(service.contains("Self-device collectors may report exactly one device"))
         assertTrue(routes.contains("service.canDownloadPackage(request.enrollmentCode, actorId)"))
         assertTrue(routes.contains("service.canRepairCollector(request.repairCollectorId, actorId, call.userRole())"))
-        assertTrue(routes.contains("service.revokeOwned(id, actorId)"))
+        assertTrue(routes.contains("service.removeOwned(id, actorId)"))
         assertTrue(service.contains("repairCollectorId = repairCollectorId"))
         assertTrue(repository.contains("MonitoringCollectorsTable.scope eq \"LAN\""))
         assertTrue(repository.contains("No active company/LAN collector is enrolled."))
@@ -87,6 +91,14 @@ class CollectorInstallerContractTest {
         assertTrue(adapterMigration.contains("monitoring_device_addresses"))
     }
 
+    @Test fun `lan discovery excludes network broadcast and multicast addresses`() {
+        val collector = Files.readString(Path.of("collector/windows/AitsmCollector.ps1"))
+        assertTrue(collector.contains("function Test-UsableLanIp"))
+        assertTrue(collector.contains("\$first -ge 224"))
+        assertTrue(collector.contains("\$isNetwork -or \$isBroadcast"))
+        assertTrue(collector.contains("Test-UsableLanIp \$candidateIp \$Cidrs"))
+    }
+
     @Test fun `revoked collectors can be archived without deleting history`() {
         val migration = Files.readString(Path.of("db/migrations/V013__archive_revoked_collectors.sql"))
         val repository = Files.readString(Path.of("src/main/kotlin/backend/repository/MonitoringRepository.kt"))
@@ -97,6 +109,17 @@ class CollectorInstallerContractTest {
         assertTrue(repository.contains("MonitoringCollectorsTable.archivedAt.isNull()"))
         assertTrue(routes.contains("/collectors/{id}/archive"))
         assertFalse(repository.contains("MonitoringCollectorsTable.deleteWhere"))
+    }
+
+    @Test fun `collector removal revokes and archives in one operation`() {
+        val repository = Files.readString(Path.of("src/main/kotlin/backend/repository/MonitoringRepository.kt"))
+        val routes = Files.readString(Path.of("src/main/kotlin/backend/routes/MonitoringRoutes.kt"))
+        assertTrue(repository.contains("fun remove(id: UUID)"))
+        assertTrue(repository.contains("fun removeOwned(id: UUID, ownerId: Int)"))
+        assertTrue(repository.contains("it[revokedAt] = removedAt"))
+        assertTrue(repository.contains("it[archivedAt] = removedAt"))
+        assertTrue(routes.contains("service.remove(id)"))
+        assertTrue(routes.contains("service.removeOwned(id, actorId)"))
     }
 
     @Test fun `local AI bridge is outbound authenticated LAN only and keeps ollama private`() {

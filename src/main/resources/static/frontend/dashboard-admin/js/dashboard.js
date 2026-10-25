@@ -74,6 +74,133 @@ function fetchJsonOrThrow(url, options = {}) {
   return window.aitsmFetchJson(url, options);
 }
 
+let adminSelfCollectorRecords = new Map();
+
+async function downloadCollectorResponse(response, fallbackName = 'AITSMCollectorSetup.exe') {
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Installer download failed');
+  }
+  const disposition = response.headers.get('content-disposition') || '';
+  const filename = disposition.match(/filename="([^"]+)"/i)?.[1] || fallbackName;
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function createAdminSelfCollectorPackage(request) {
+  const enrollment = await fetchJsonOrThrow('/api/monitoring/collector-packages', {
+    method: 'POST',
+    body: JSON.stringify({ ...request, scope: 'SELF' })
+  });
+  const response = await fetch('/api/monitoring/collector-installer/windows', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      enrollmentCode: enrollment.enrollmentCode,
+      repairCollectorId: enrollment.repairCollectorId || null
+    })
+  });
+  await downloadCollectorResponse(response);
+  return enrollment;
+}
+
+async function downloadAdminSelfCollector() {
+  const button = document.getElementById('downloadAdminSelfCollectorBtn');
+  const status = document.getElementById('adminSelfCollectorStatus');
+  if (!button || !status) return;
+  button.disabled = true;
+  status.textContent = 'Creating your secure SELF-scope installer…';
+  status.className = 'small';
+  try {
+    const enrollment = await createAdminSelfCollectorPackage({
+      name: `${window.currentUser?.fullName || 'Admin'} Windows device`,
+      siteId: 'self-device'
+    });
+    const target = enrollment.baseUrl || window.location.origin;
+    status.textContent = `Downloaded for ${String(enrollment.environment || 'production').toUpperCase()} (${target}). Run it within 10 minutes and approve the Windows prompt.`;
+    status.className = 'small text-success';
+  } catch (error) {
+    status.textContent = error.message || 'Unable to download collector.';
+    status.className = 'small text-danger';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function repairAdminSelfCollector(id) {
+  const item = adminSelfCollectorRecords.get(id);
+  const status = document.getElementById('adminSelfCollectorStatus');
+  if (!item || !status) return;
+  status.textContent = `Creating a repair installer for ${item.name}…`;
+  status.className = 'small';
+  try {
+    await createAdminSelfCollectorPackage({ name: item.name, siteId: item.siteId, repairCollectorId: item.collectorId });
+    status.textContent = 'Repair installer downloaded. Run it as administrator on the same computer.';
+    status.className = 'small text-success';
+  } catch (error) {
+    status.textContent = error.message || 'Unable to create repair installer.';
+    status.className = 'small text-danger';
+  }
+}
+
+async function downloadAdminSelfCollectorDiagnostics(id) {
+  const response = await fetch(`/api/monitoring/my-collectors/${encodeURIComponent(id)}/diagnostics`, { headers: authHeaders() });
+  await downloadCollectorResponse(response, 'AITSM-collector-diagnostics.txt');
+}
+
+async function revokeAdminSelfCollector(id) {
+  if (!confirm('Remove this collector from your account?')) return;
+  await fetchJsonOrThrow(`/api/monitoring/my-collectors/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await loadAdminSelfCollectors();
+}
+
+async function loadAdminSelfCollectors() {
+  const target = document.getElementById('adminSelfCollectors');
+  if (!target) return;
+  const collectors = await fetchJsonOrThrow('/api/monitoring/my-collectors');
+  adminSelfCollectorRecords = new Map(collectors.map(item => [item.collectorId, item]));
+  target.innerHTML = collectors.length ? collectors.map(item => `
+    <div class='insight-item'>
+      <div>
+        <strong>${escapeHtml(item.name)}</strong>
+        <div class='small'>${escapeHtml(item.state)} · ${escapeHtml(formatDateTime(item.lastSeenAt))}</div>
+        <div class='small'>${escapeHtml(item.statusReason || '')}</div>
+        <div class='small'>Agent ${escapeHtml(item.agentVersion || 'legacy')} · ${escapeHtml(String(item.versionStatus || 'unknown').replaceAll('_', ' ').toLowerCase())} · Latest ${escapeHtml(item.latestAgentVersion || 'unknown')} · Failures ${Number(item.consecutiveFailures || 0)}</div>
+      </div>
+      <div class='inline-actions'>
+        ${item.state === 'REVOKED'
+          ? `<button class='btn btn-ghost' type='button' data-collector-action='remove' data-collector-id='${escapeHtml(item.collectorId)}'>Remove</button>`
+          : `<button class='btn btn-ghost' type='button' data-collector-action='diagnostics' data-collector-id='${escapeHtml(item.collectorId)}'>Diagnostics</button><button class='btn btn-ghost' type='button' data-collector-action='repair' data-collector-id='${escapeHtml(item.collectorId)}'>${item.versionStatus === 'CURRENT' ? 'Repair' : 'Update / Repair'}</button><button class='btn btn-ghost' type='button' data-collector-action='remove' data-collector-id='${escapeHtml(item.collectorId)}'>Remove</button>`}
+      </div>
+    </div>`).join('') : `<p class='small'>No SELF-scope collector installed for your Admin account.</p>`;
+}
+
+async function mountAdminSelfCollector() {
+  await window.aitsmReady;
+  if (!['admin', 'it-admin'].includes(currentRole())) return;
+  const card = document.getElementById('adminSelfCollectorCard');
+  card?.classList.remove('hidden');
+  document.getElementById('downloadAdminSelfCollectorBtn')?.addEventListener('click', downloadAdminSelfCollector);
+  card?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-collector-action]');
+    if (!button) return;
+    const id = button.dataset.collectorId;
+    if (button.dataset.collectorAction === 'diagnostics') downloadAdminSelfCollectorDiagnostics(id).catch(error => showAppAlert(error.message));
+    if (button.dataset.collectorAction === 'repair') repairAdminSelfCollector(id);
+    if (button.dataset.collectorAction === 'remove') revokeAdminSelfCollector(id).catch(error => showAppAlert(error.message));
+  });
+  await loadAdminSelfCollectors().catch((error) => {
+    const status = document.getElementById('adminSelfCollectorStatus');
+    if (status) { status.textContent = error.message || 'Unable to load collectors.'; status.className = 'small text-danger'; }
+  });
+}
+
 function renderSlaIntelligence() {
   const analytics = dashboardState.slaAnalytics || {};
   const summary = document.getElementById('slaAnalyticsSummary');
@@ -207,9 +334,18 @@ function renderLineChart(elId, labels, activeSeries, resolvedSeries) {
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
 
-  const x = (i) => pad.left + (i * (plotW / Math.max(1, labels.length - 1)));
+  const x = (i) => labels.length === 1
+    ? pad.left + (plotW / 2)
+    : pad.left + (i * (plotW / (labels.length - 1)));
   const y = (v) => pad.top + (plotH - ((v / maxValue) * plotH));
   const toPath = (series) => series.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(v)}`).join(' ');
+  const points = (series, color, name) => series.map((value, index) => `
+    <circle cx='${x(index)}' cy='${y(value)}' r='5' fill='${color}' stroke='#fff' stroke-width='2'>
+      <title>${escapeHtml(`${name}: ${value}`)}</title>
+    </circle>`).join('');
+  const singlePeriodValues = labels.length === 1 ? `
+    <text x='${x(0)}' y='${Math.max(14, y(activeSeries[0]) - 10)}' text-anchor='middle' class='viz-axis-hint'>Active: ${Number(activeSeries[0] || 0)}</text>
+    <text x='${x(0)}' y='${Math.min(height - pad.bottom + 20, y(resolvedSeries[0]) + 18)}' text-anchor='middle' class='viz-axis-hint'>Resolved: ${Number(resolvedSeries[0] || 0)}</text>` : '';
 
   const grid = [0, 0.25, 0.5, 0.75, 1].map((r) => {
     const gy = pad.top + (plotH * r);
@@ -221,6 +357,9 @@ function renderLineChart(elId, labels, activeSeries, resolvedSeries) {
       ${grid}
       <path d='${toPath(activeSeries)}' fill='none' stroke='#2563eb' stroke-width='2.5' stroke-linecap='round'/>
       <path d='${toPath(resolvedSeries)}' fill='none' stroke='#22c55e' stroke-width='2.5' stroke-linecap='round'/>
+      ${points(activeSeries, '#2563eb', 'Active tickets')}
+      ${points(resolvedSeries, '#22c55e', 'Resolved or closed tickets')}
+      ${singlePeriodValues}
       ${labels.map((label, i) => `<text x='${x(i)}' y='${height - 14}' text-anchor='middle' class='viz-axis-label'>${escapeHtml(label)}</text>`).join('')}
       <text x='${pad.left}' y='${pad.top - 8}' class='viz-axis-hint'>0-${maxValue}</text>
     </svg>
@@ -289,7 +428,8 @@ function updateTrendControlState() {
 function getPriorityCounts(tickets) {
   const counts = { Critical: 0, High: 0, Medium: 0, Low: 0 };
   (Array.isArray(tickets) ? tickets : []).forEach((ticket) => {
-    const priority = String(ticket.priority || '').trim();
+    const rawPriority = String(ticket.priority || '').trim().toLowerCase();
+    const priority = rawPriority ? rawPriority.charAt(0).toUpperCase() + rawPriority.slice(1) : '';
     if (counts[priority] != null) counts[priority] += 1;
   });
   return counts;
@@ -339,22 +479,23 @@ function renderMetricCards() {
   const monitorSummary = dashboardState.monitoringSummary || {};
   const inventory = dashboardState.inventoryStats || {};
 
-  const activeCount = tickets.filter((ticket) => {
-    const status = normalizeTicketStatus(ticket.status);
-    return status === 'open' || status === 'in progress';
-  }).length;
+  const activeCount = tickets.filter((ticket) => normalizeTicketStatus(ticket.status) === 'open').length;
+  const inProgressCount = tickets.filter((ticket) => normalizeTicketStatus(ticket.status) === 'in progress').length;
 
   const resolvedCount = tickets.filter((ticket) => {
     const status = normalizeTicketStatus(ticket.status);
-    return status === 'resolved' || status === 'closed';
+    return status === 'resolved';
   }).length;
+  const closedCount = tickets.filter((ticket) => normalizeTicketStatus(ticket.status) === 'closed').length;
 
   const cards = [
     ['TS', 'Total Assets', Number(inventory.total || 0), 'Registered inventory devices'],
-    ['DD', 'Discoverable Devices', Number(monitorSummary.totalDiscovered || 0), 'LAN devices currently visible'],
-    ['AT', 'Active Tickets', activeCount, 'Open and in-progress requests'],
-    ['RC', 'Resolved Tickets', resolvedCount, 'Resolved and closed requests'],
-    ['TC', 'Telemetry Coverage', `${Number(monitorSummary.telemetryAvailableDevices || 0)}/${Number(monitorSummary.totalDiscovered || 0)}`, 'Devices with telemetry stream'],
+    ['DD', 'Devices On LAN', Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0), 'Observed by the active LAN collector'],
+    ['AT', 'Active Tickets', activeCount, 'Open requests awaiting work'],
+    ['IP', 'In Progress Tickets', inProgressCount, 'Requests currently being handled'],
+    ['RC', 'Resolved Tickets', resolvedCount, 'Awaiting requester confirmation'],
+    ['CC', 'Closed Tickets', closedCount, 'Completed and closed requests'],
+    ['TC', 'Telemetry Coverage', `${Number(monitorSummary.telemetryAvailableDevices || 0)}/${Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0)}`, 'On-LAN devices with a telemetry stream'],
     ['CL', 'Collector Health', String(monitorSummary.collectorState || 'NOT_ENROLLED').replaceAll('_', ' '), `Last seen ${formatDateTime(monitorSummary.collectorLastSeenAt)}`],
     ['UP', 'Telemetry Updated', monitorSummary.timestamp ? formatDateTime(monitorSummary.timestamp) : 'Never', 'Authoritative server receipt time']
   ];
@@ -380,10 +521,7 @@ function renderOperationalReport() {
     return cpu >= 85 || memory >= 90;
   });
 
-  const activeTickets = tickets.filter((ticket) => {
-    const status = normalizeTicketStatus(ticket.status);
-    return status === 'open' || status === 'in progress';
-  }).length;
+  const inProgressTickets = tickets.filter((ticket) => normalizeTicketStatus(ticket.status) === 'in progress').length;
 
   const monthToken = dashboardState.trend.month === 'all'
     ? buildTrendData(tickets, { ...dashboardState.trend, view: 'monthly' }).effectiveMonth
@@ -405,10 +543,10 @@ function renderOperationalReport() {
     : '0%';
 
   const stats = [
-    ['Active Tickets', activeTickets, 'Tickets requiring current handling'],
+    ['In Progress Tickets', inProgressTickets, 'Tickets currently being handled'],
     ['Ticket Trend', resolutionRate, `${monthLabel(resolvedMonthToken)} resolution rate`],
     ['Operational Alerts', criticalAlerts.length, 'High CPU/memory devices'],
-    ['Discoverable Devices', Number(monitorSummary.totalDiscovered || 0), 'Devices seen in LAN discovery']
+    ['Devices On LAN', Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0), 'Devices currently seen by LAN discovery']
   ];
 
   host.innerHTML = stats.map(([label, value, hint]) => `
@@ -437,7 +575,7 @@ function renderSystemPerformance() {
   }).length;
 
   const totalTickets = Math.max(1, tickets.length);
-  const discoverable = Math.max(1, Number(monitorSummary.totalDiscovered || 0));
+  const discoverable = Math.max(1, Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0));
   const telemetryCoverage = (Number(monitorSummary.telemetryAvailableDevices || 0) / discoverable) * 100;
   const ticketLoad = Math.min(100, (activeTickets / totalTickets) * 100);
 
@@ -486,6 +624,7 @@ function renderRecentAdminTickets(tickets) {
 
   const priorityOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
   const relevant = [...(Array.isArray(tickets) ? tickets : [])]
+    .filter((ticket) => ['critical', 'high'].includes(String(ticket.priority || '').trim().toLowerCase()))
     .sort((a, b) => {
       const priorityDiff = (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99);
       if (priorityDiff !== 0) return priorityDiff;
@@ -657,19 +796,19 @@ async function loadAdminDashboard() {
   if (recentRows) showTableSkeleton(recentRows, { rowCount: 6, columnCount: 5 });
 
   try {
-    const [ticketsPayload, monitorSummary, lanDevices, notifications, inventoryStats, slaAnalytics] = await Promise.all([
-      window.aitsmFetchAllPaginated('/api/tickets'),
-      fetchJsonOrThrow('/api/monitoring/summary'),
-      fetchJsonOrThrow('/api/monitoring/lan-devices'),
-      fetchJsonOrThrow('/api/notifications?page=1&pageSize=8'),
-      fetchJsonOrThrow('/api/inventory/stats'),
-      fetchJsonOrThrow('/api/sla/analytics')
+    const ticketsPayload = await window.aitsmFetchAllPaginated('/api/tickets');
+    const [monitorSummary, lanDevices, notifications, inventoryStats, slaAnalytics] = await Promise.all([
+      fetchJsonOrThrow('/api/monitoring/summary').catch(() => null),
+      fetchJsonOrThrow('/api/monitoring/lan-devices').catch(() => []),
+      fetchJsonOrThrow('/api/notifications?page=1&pageSize=8').catch(() => []),
+      fetchJsonOrThrow('/api/inventory/stats').catch(() => null),
+      fetchJsonOrThrow('/api/sla/analytics').catch(() => null)
     ]);
 
     dashboardState.tickets = normalizeTicketList(ticketsPayload);
     dashboardState.monitoringSummary = monitorSummary || null;
     dashboardState.lanDevices = Array.isArray(lanDevices) ? lanDevices : [];
-    dashboardState.notifications = Array.isArray(notifications) ? notifications : [];
+    dashboardState.notifications = Array.isArray(notifications?.items) ? notifications.items : (Array.isArray(notifications) ? notifications : []);
     dashboardState.inventoryStats = inventoryStats || null;
     dashboardState.slaAnalytics = slaAnalytics || null;
 
@@ -702,6 +841,46 @@ async function loadAdminDashboard() {
   } finally {
     if (recentRows) clearTableSkeleton(recentRows);
     setAnalyticsBuffering(false);
+  }
+}
+
+async function exportAnalyticsCsv() {
+  const button = document.getElementById('exportAnalyticsBtn');
+  const status = document.getElementById('analyticsExportStatus');
+  if (!button || !status) return;
+  button.disabled = true;
+  status.textContent = 'Preparing protected analytics export…';
+  status.className = 'small';
+  try {
+    const reauthToken = await obtainReauthToken('sensitive-export');
+    const response = await fetch('/api/analytics/export', {
+      method: 'GET',
+      headers: { ...authHeaders(), 'X-Reauth-Token': reauthToken },
+      cache: 'no-store'
+    });
+    consumeCachedReauth('sensitive-export');
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Analytics export failed');
+    }
+    const disposition = response.headers.get('content-disposition') || '';
+    const filename = disposition.match(/filename="([^"]+)"/i)?.[1] || `AITSM-analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    status.textContent = 'Analytics CSV downloaded.';
+    status.className = 'small text-success';
+  } catch (error) {
+    consumeCachedReauth('sensitive-export');
+    status.textContent = error.message || 'Unable to export analytics.';
+    status.className = 'small text-danger';
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -754,9 +933,11 @@ function startDashboardFeedRefresh() {
 document.addEventListener('DOMContentLoaded', () => {
   wireTrendControls();
   loadAdminDashboard();
+  mountAdminSelfCollector();
   startDashboardTelemetryRefresh();
   startDashboardFeedRefresh();
   document.getElementById('refreshAdminOpsFeedBtn')?.addEventListener('click', refreshDashboardFeed);
+  document.getElementById('exportAnalyticsBtn')?.addEventListener('click', exportAnalyticsCsv);
 });
 
 document.addEventListener('visibilitychange', () => {

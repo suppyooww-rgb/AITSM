@@ -23,7 +23,10 @@ class InvitationService(
         val normalized = address.trim().lowercase()
         require(normalized.contains('@')) { "Valid email is required" }
         require(users.findByEmailOnly(normalized) == null) { "Unable to create invitation" }
-        require(role != UserRole.SUPERADMIN || actorRole == UserRole.SUPERADMIN) { "Only a system administrator can invite a system administrator" }
+        require(role != UserRole.SUPERADMIN) { "System administrator accounts cannot be created by invitation" }
+        require(actorRole == UserRole.SUPERADMIN || role == UserRole.END_USER) {
+            "Only a system administrator can invite an administrator"
+        }
         val (view, raw) = invitations.create(normalized, role, actor, (Env.get("INVITATION_TTL_HOURS")?.toLongOrNull() ?: 24L))
         val url = "${(Env.get("APP_BASE_URL") ?: "http://127.0.0.1:8070").removeSuffix("/")}/signup?invite=$raw"
         val delivered = email?.sendInvitation(normalized, url) == true

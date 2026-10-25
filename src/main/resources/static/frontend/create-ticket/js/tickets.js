@@ -13,6 +13,50 @@ function ensureActionMenuBackdrop() {
 }
 
 const FOLLOW_UP_HOURS = 24;
+let ticketImageFiles = [];
+
+async function renderTicketImagePreviews() {
+  const host = document.getElementById('ticketImagePreviews');
+  if (!host) return;
+  host.innerHTML = '';
+  for (const [index, file] of ticketImageFiles.entries()) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cssText = 'width:150px;padding:8px';
+    const canvas = document.createElement('canvas');
+    canvas.width = 140; canvas.height = 90;
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', `Preview of ${file.name}`);
+    canvas.style.cssText = 'width:100%;height:90px;border-radius:8px';
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.max(canvas.width / bitmap.width, canvas.height / bitmap.height);
+      const width = bitmap.width * scale; const height = bitmap.height * scale;
+      canvas.getContext('2d').drawImage(bitmap, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+      bitmap.close();
+    } catch {
+      canvas.getContext('2d').fillText('Preview unavailable', 10, 45);
+    }
+    const name = document.createElement('div'); name.className = 'small'; name.textContent = file.name;
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn btn-ghost'; remove.textContent = 'Remove';
+    remove.addEventListener('click', () => { ticketImageFiles.splice(index, 1); renderTicketImagePreviews(); });
+    card.append(canvas, name, remove); host.appendChild(card);
+  }
+}
+
+function selectTicketImages(event) {
+  const chosen = Array.from(event.target.files || []);
+  const allowed = new Set(['image/png', 'image/jpeg', 'image/webp']);
+  const invalid = chosen.find(file => !allowed.has(file.type) || file.size <= 0 || file.size > 5 * 1024 * 1024);
+  if (invalid || chosen.length > 5) {
+    event.target.value = '';
+    ticketImageFiles = [];
+    renderTicketImagePreviews();
+    return setCreateTicketMessage('Select up to 5 valid PNG, JPEG, or WebP images, no larger than 5 MB each.', 'danger');
+  }
+  ticketImageFiles = chosen;
+  renderTicketImagePreviews();
+}
 
 function parseDate(v){ const d=new Date(v||''); return Number.isNaN(d.getTime()) ? null : d; }
 function hoursSince(v){ const d=parseDate(v); if(!d) return 999; return (Date.now()-d.getTime())/(1000*60*60); }
@@ -112,12 +156,27 @@ async function createTicket() {
       method: 'POST',
       body: JSON.stringify(body)
     });
+    const failures = [];
+    for (const file of ticketImageFiles) {
+      const form = new FormData(); form.append('image', file, file.name);
+      const upload = await fetch(`/api/tickets/${data.id}/attachments`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': decodeURIComponent(readCookie('aitsm_csrf')) }, body: form
+      });
+      if (!upload.ok) failures.push(file.name);
+    }
+    if (failures.length) {
+      setCreateTicketMessage(`Ticket #${data.id} was created, but these images were not uploaded: ${failures.join(', ')}. Your form has been preserved so you can retry from the ticket details.`, 'danger');
+      return;
+    }
     setCreateTicketMessage(`Ticket #${data.id} created successfully. Redirecting...`, 'success');
-    location.href = '/tickets';
+    location.href = `/tickets?ticketId=${encodeURIComponent(data.id)}`;
   } catch (error) {
     setCreateTicketMessage(error.message || 'Unable to create ticket', 'danger');
   }
 }
+
+document.addEventListener('DOMContentLoaded', () => document.getElementById('ticketImages')?.addEventListener('change', selectTicketImages), { once: true });
 
 function formatSla(ticket) {
   const status = String(ticket.status || '').toLowerCase();

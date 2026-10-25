@@ -56,6 +56,10 @@ class SecurityBoundariesTest {
         assertTrue(Permission.ASSET_MANAGE in PermissionMatrix.permissions(UserRole.ASSET_MANAGER))
         assertFalse(Permission.ROLE_MANAGE in PermissionMatrix.permissions(UserRole.ASSET_MANAGER))
         assertTrue(Permission.AUDIT_READ in PermissionMatrix.permissions(UserRole.SUPERADMIN))
+        assertFalse(Permission.ROLE_MANAGE in PermissionMatrix.permissions(UserRole.ADMIN))
+        assertFalse(Permission.SECURITY_MANAGE in PermissionMatrix.permissions(UserRole.ADMIN))
+        assertFalse(Permission.AI_CONFIGURE in PermissionMatrix.permissions(UserRole.ADMIN))
+        assertTrue(Permission.TICKET_MANAGE in PermissionMatrix.permissions(UserRole.ADMIN))
         assertFalse(Permission.USER_INVITE in PermissionMatrix.permissions(UserRole.SUPPORT_AGENT))
         assertFalse(Permission.ROLE_MANAGE in PermissionMatrix.permissions(UserRole.AUDITOR))
         assertTrue(Permission.AUDIT_READ in PermissionMatrix.permissions(UserRole.AUDITOR))
@@ -78,6 +82,14 @@ class SecurityBoundariesTest {
         assertFalse(isMfaRecoveryPath("/api/tickets"))
         assertFalse(isMfaRecoveryPath("/metrics"))
         assertFalse(isMfaRecoveryPath("/uploads/profile-photos/example.png"))
+    }
+
+    @Test fun `temporary password administrator can finish MFA login before changing password`() {
+        assertTrue(isPasswordChangePath("/api/auth/login"))
+        assertTrue(isPasswordChangePath("/api/auth/me"))
+        assertTrue(isPasswordChangePath("/api/users/me/password"))
+        assertFalse(isPasswordChangePath("/api/tickets"))
+        assertFalse(isPasswordChangePath("/api/users/2/reset-password"))
     }
 
     @Test fun `public static assets do not perform session writes during parallel page loading`() {

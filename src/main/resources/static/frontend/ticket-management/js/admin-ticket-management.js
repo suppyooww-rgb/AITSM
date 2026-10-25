@@ -142,6 +142,17 @@ function renderAdminTicketAiContext() {
       ? `${ticket.assignedTo ? `Handled by ${ticket.assignedTo}. ` : 'This ticket is unassigned. '}Only the assigned administrator can generate or save assistance.`
       : `${superAdmin && !ownedByMe ? 'Super Admin override is available. ' : ''}Generate reviewable assistance. Until the local AI Bridge is available, deterministic fallback guidance is used.`);
   loadAdminTicketHistory(ticket.id);
+  loadAdminTicketAttachments(ticket.id);
+}
+
+async function loadAdminTicketAttachments(ticketId) {
+  const host = document.getElementById('adminTicketAttachments');
+  if (!host) return;
+  try {
+    const attachments = await window.aitsmFetchJson(`/api/tickets/${ticketId}/attachments`);
+    if (!attachments.length) { host.innerHTML = '<p class="small">No screenshots attached.</p>'; return; }
+    host.innerHTML = attachments.map(item => `<a class='card' style='padding:8px;width:170px' href='${item.downloadUrl}' target='_blank' rel='noopener'><img src='${item.downloadUrl}' alt='${escapeHtml(item.originalName)}' style='width:100%;height:100px;object-fit:cover;border-radius:8px'><span class='small'>${escapeHtml(item.originalName)}</span></a>`).join('');
+  } catch (error) { host.innerHTML = `<p class='small text-danger'>${escapeHtml(error.message)}</p>`; }
 }
 
 function ticketStatusTransitionLabel(event) {
@@ -456,7 +467,7 @@ function actionMenu(ticket) {
   const canEdit = ownedByMe || superAdmin;
   if (unassigned && current === 'open') actions.push(`<button type='button' onclick='claimTicket(${ticket.id})'>Take ticket</button>`);
   if (canEdit) {
-    if (current !== 'open') actions.push(`<button type='button' onclick='openTicketTransition(${ticket.id}, "Open")'>Reopen ticket</button>`);
+    if (current === 'resolved') actions.push(`<button type='button' onclick='openTicketTransition(${ticket.id}, "In Progress")'>Reopen as in progress</button>`);
     if (!['resolved', 'closed'].includes(current)) actions.push(`<button type='button' onclick='openTicketTransition(${ticket.id}, "Resolved")'>Resolve ticket</button>`);
     if (current === 'resolved') actions.push(`<button type='button' onclick='openTicketTransition(${ticket.id}, "Closed")'>Close ticket</button>`);
     if (ownedByMe && !['resolved', 'closed'].includes(current)) actions.push(`<button type='button' onclick='openTicketAssignment(${ticket.id}, "release")'>Release ticket</button>`);

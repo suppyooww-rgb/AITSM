@@ -153,18 +153,15 @@ function toggleCollectorActionMenu(event, menuId) {
 function collectorActionMenu(item, index) {
   const id = JSON.stringify(item.collectorId);
   const menuId = `collectorActionMenu-${index}`;
-  const actions = [
-    `<button type='button' onclick='downloadCollectorDiagnostics(${id})'>Download diagnostics</button>`
-  ];
+  const actions = [];
+  if (item.state !== 'REVOKED') {
+    actions.push(`<button type='button' onclick='downloadCollectorDiagnostics(${id})'>Download diagnostics</button>`);
+  }
   if (item.scope === 'LAN' && item.state !== 'REVOKED') {
     actions.push(`<button type='button' onclick='setCollectorAiBridge(${id}, ${!item.aiBridgeEnabled})'>${item.aiBridgeEnabled ? 'Disable' : 'Enable'} AI Bridge</button>`);
   }
-  if (item.state !== 'REVOKED') {
-    actions.push(`<button type='button' onclick='repairCollector(${id})'>Download repair installer</button>`);
-    actions.push(`<button class='collector-menu-danger' type='button' onclick='revokeCollector(${id})'>Revoke collector</button>`);
-  } else {
-    actions.push(`<button class='collector-menu-danger' type='button' onclick='archiveCollector(${id})'>Remove from list</button>`);
-  }
+  if (item.state !== 'REVOKED') actions.push(`<button type='button' onclick='repairCollector(${id})'>${item.versionStatus === 'CURRENT' ? 'Download repair installer' : 'Update or repair collector'}</button>`);
+  actions.push(`<button class='collector-menu-danger' type='button' onclick='removeCollector(${id})'>Remove collector</button>`);
   return `<div class='row-action-wrap'>
     <button class='btn btn-ghost icon-btn collector-menu-trigger' type='button' onclick='toggleCollectorActionMenu(event, "${menuId}")' aria-haspopup='menu' aria-expanded='false' aria-controls='${menuId}' aria-label='Actions for ${aitsmEscapeHtml(item.name || 'collector')}' title='Collector actions'>•••</button>
     <div id='${menuId}' class='row-action-menu collector-action-menu hidden' role='menu'>${actions.join('')}</div>
@@ -220,7 +217,7 @@ async function loadCollectors() {
   const rows = document.getElementById('collectorRows');
   const collectors = await fetchJsonOrThrow('/api/monitoring/collectors');
   collectorRecords = new Map(collectors.map(item => [item.collectorId, item]));
-  rows.innerHTML = collectors.length ? collectors.map((item, index) => `<tr><td>${aitsmEscapeHtml(item.name)}<div class='small'>${aitsmEscapeHtml(item.statusReason || '')}</div><div class='small'>Agent ${aitsmEscapeHtml(item.agentVersion || 'legacy')} · Failures ${Number(item.consecutiveFailures || 0)}</div>${item.scope === 'LAN' ? `<div class='small'>AI Bridge: ${item.aiBridgeEnabled ? (item.aiBridgeAvailable ? 'ready' : 'enabled, waiting for Ollama') : 'disabled'}${item.aiBridgeModel ? ` · ${aitsmEscapeHtml(item.aiBridgeModel)}` : ''}</div>` : ''}${item.aiBridgeLastError ? `<div class='small text-danger'>AI: ${aitsmEscapeHtml(item.aiBridgeLastError)}</div>` : ''}${item.lastReportedError ? `<div class='small text-danger'>Last error: ${aitsmEscapeHtml(item.lastReportedError)}</div>` : ''}</td><td>${aitsmEscapeHtml(item.scope)}</td><td><span class='badge ${item.state === 'ONLINE' ? 'resolved' : 'warning'}'>${aitsmEscapeHtml(item.state)}</span></td><td>${aitsmEscapeHtml(item.lastSeenAt ? new Date(item.lastSeenAt).toLocaleString() : 'Never')}</td><td class='collector-actions-cell'>${collectorActionMenu(item, index)}</td></tr>`).join('') : `<tr><td colspan='5'>No collectors enrolled.</td></tr>`;
+  rows.innerHTML = collectors.length ? collectors.map((item, index) => `<tr><td>${aitsmEscapeHtml(item.name)}<div class='small'>${aitsmEscapeHtml(item.statusReason || '')}</div><div class='small'>Agent ${aitsmEscapeHtml(item.agentVersion || 'legacy')} · ${aitsmEscapeHtml(String(item.versionStatus || 'unknown').replaceAll('_', ' ').toLowerCase())} · Latest ${aitsmEscapeHtml(item.latestAgentVersion || 'unknown')} · Failures ${Number(item.consecutiveFailures || 0)}</div>${item.updateRequired ? `<div class='small text-danger'>Update required. Download an update/repair installer.</div>` : item.versionStatus === 'UPDATE_AVAILABLE' ? `<div class='small'>Update available through the collector action menu.</div>` : ''}${item.scope === 'LAN' ? `<div class='small'>AI Bridge: ${item.aiBridgeEnabled ? (item.aiBridgeAvailable ? 'ready' : 'enabled, waiting for Ollama') : 'disabled'}${item.aiBridgeModel ? ` · ${aitsmEscapeHtml(item.aiBridgeModel)}` : ''}</div>` : ''}${item.aiBridgeLastError ? `<div class='small text-danger'>AI: ${aitsmEscapeHtml(item.aiBridgeLastError)}</div>` : ''}${item.lastReportedError ? `<div class='small text-danger'>Last error: ${aitsmEscapeHtml(item.lastReportedError)}</div>` : ''}</td><td>${aitsmEscapeHtml(item.scope)}</td><td><span class='badge ${item.state === 'ONLINE' ? 'resolved' : 'warning'}'>${aitsmEscapeHtml(item.state)}</span></td><td>${aitsmEscapeHtml(item.lastSeenAt ? new Date(item.lastSeenAt).toLocaleString() : 'Never')}</td><td class='collector-actions-cell'>${collectorActionMenu(item, index)}</td></tr>`).join('') : `<tr><td colspan='5'>No collectors enrolled.</td></tr>`;
 }
 
 async function setCollectorAiBridge(id, enabled) {
@@ -233,24 +230,12 @@ async function setCollectorAiBridge(id, enabled) {
   } catch (error) { showAppAlert(error.message || 'Unable to update AI Bridge.'); }
 }
 
-async function revokeCollector(id) {
-  closeCollectorActionMenus();
-  if (!confirm('Revoke this collector? It will stop accepting reports immediately.')) return;
-  await fetchJsonOrThrow(`/api/monitoring/collectors/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  await loadCollectors();
-}
-
-async function archiveCollector(id) {
+async function removeCollector(id) {
   closeCollectorActionMenus();
   const item = collectorRecords.get(id);
-  if (!item || item.state !== 'REVOKED') return;
-  if (!confirm(`Remove ${item.name} from the active collector list? Historical records will be retained. This does not uninstall the Windows service.`)) return;
-  try {
-    await fetchJsonOrThrow(`/api/monitoring/collectors/${encodeURIComponent(id)}/archive`, { method: 'DELETE' });
-    await loadCollectors();
-  } catch (error) {
-    showAppAlert(error.message || 'Unable to remove the collector from the active list.');
-  }
+  if (!item || !confirm(`Remove ${item.name}? It will stop accepting reports immediately and disappear from this list. Historical records will be retained. This does not uninstall the Windows service.`)) return;
+  await fetchJsonOrThrow(`/api/monitoring/collectors/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await loadCollectors();
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

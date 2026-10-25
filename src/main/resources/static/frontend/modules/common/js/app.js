@@ -119,6 +119,61 @@ window.aitsmFetchAllPaginated = fetchAllPaginated;
 const reauthCache = new Map();
 let pendingReauthPassword = null;
 
+function enablePasswordVisibility(input) {
+  if (!input || input.dataset.passwordVisibility === 'enabled') return;
+  let field = input.closest('.password-field');
+  if (!field) {
+    field = document.createElement('div');
+    field.className = 'password-field';
+    input.parentNode?.insertBefore(field, input);
+    field.appendChild(input);
+  }
+
+  const toggleId = `${input.id || 'password'}VisibilityToggle`;
+  let toggle = field.querySelector('.password-toggle-btn');
+  if (!toggle) {
+    toggle = document.createElement('button');
+    toggle.id = toggleId;
+    toggle.className = 'password-toggle-btn';
+    toggle.type = 'button';
+    toggle.innerHTML = "<span class='password-toggle-icon password-toggle-show' aria-hidden='true'>👁</span><span class='password-toggle-icon password-toggle-hide hidden' aria-hidden='true'>🙈</span>";
+    field.appendChild(toggle);
+  }
+
+  const updateState = (visible) => {
+    input.type = visible ? 'text' : 'password';
+    toggle.setAttribute('aria-label', visible ? 'Hide password' : 'Show password');
+    toggle.setAttribute('title', visible ? 'Hide password' : 'Show password');
+    toggle.setAttribute('aria-pressed', String(visible));
+    toggle.querySelector('.password-toggle-show')?.classList.toggle('hidden', visible);
+    toggle.querySelector('.password-toggle-hide')?.classList.toggle('hidden', !visible);
+  };
+
+  updateState(false);
+  toggle.dataset.passwordVisibilityBound = 'true';
+  toggle.addEventListener('click', () => updateState(input.type === 'password'));
+  input.dataset.passwordVisibility = 'enabled';
+}
+
+function enablePasswordVisibilityFields(scope = document) {
+  scope.querySelectorAll("input[type='password']").forEach(enablePasswordVisibility);
+}
+
+window.aitsmEnablePasswordVisibilityFields = enablePasswordVisibilityFields;
+
+function observePasswordVisibilityFields() {
+  if (window.aitsmPasswordVisibilityObserver || !document.body) return;
+  const observer = new MutationObserver((records) => {
+    records.forEach((record) => record.addedNodes.forEach((node) => {
+      if (!(node instanceof Element)) return;
+      if (node.matches("input[type='password']")) enablePasswordVisibility(node);
+      enablePasswordVisibilityFields(node);
+    }));
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  window.aitsmPasswordVisibilityObserver = observer;
+}
+
 function ensureReauthModal() {
   if (document.getElementById('reauthModal')) return;
   const modal = document.createElement('div');
@@ -145,6 +200,7 @@ function ensureReauthModal() {
       </form>
     </section>`;
   document.body.appendChild(modal);
+  enablePasswordVisibilityFields(modal);
 
   document.getElementById('reauthForm')?.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -225,7 +281,54 @@ async function loadAuthenticatedUser() {
   return null;
 }
 
-window.aitsmReady = loadAuthenticatedUser();
+function requireTemporaryPasswordChange() {
+  if (!window.currentUser?.mustChangePassword || document.getElementById('requiredPasswordChange')) return;
+  const modal = document.createElement('div');
+  modal.id = 'requiredPasswordChange';
+  modal.className = 'modal-overlay show';
+  modal.innerHTML = `<section class='modal-card' role='dialog' aria-modal='true' aria-labelledby='requiredPasswordTitle'>
+    <h2 id='requiredPasswordTitle' class='section-title'>Create a new password</h2>
+    <p class='section-subtitle'>Your temporary password must be replaced before you can use AITSM.</p>
+    <form id='requiredPasswordForm' class='form-grid single-col'>
+      <div class='form-group'><label for='requiredCurrentPassword'>Temporary password</label><input id='requiredCurrentPassword' type='password' autocomplete='current-password' required></div>
+      <div class='form-group'><label for='requiredNewPassword'>New password</label><input id='requiredNewPassword' type='password' minlength='12' autocomplete='new-password' required></div>
+      <div class='form-group'><label for='requiredConfirmPassword'>Confirm new password</label><input id='requiredConfirmPassword' type='password' minlength='12' autocomplete='new-password' required></div>
+      <p id='requiredPasswordMessage' class='small text-danger hidden' role='alert'></p>
+      <div class='inline-actions'><button class='btn btn-primary' type='submit'>Change password</button><button class='btn btn-ghost' type='button' id='requiredPasswordLogout'>Sign out</button></div>
+    </form></section>`;
+  document.body.appendChild(modal);
+  enablePasswordVisibilityFields(modal);
+  document.body.style.overflow = 'hidden';
+  modal.querySelector('#requiredPasswordLogout').addEventListener('click', logout);
+  modal.querySelector('#requiredPasswordForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const message = modal.querySelector('#requiredPasswordMessage');
+    const currentPassword = modal.querySelector('#requiredCurrentPassword').value;
+    const newPassword = modal.querySelector('#requiredNewPassword').value;
+    const confirmPassword = modal.querySelector('#requiredConfirmPassword').value;
+    message.classList.add('hidden');
+    if (newPassword !== confirmPassword) {
+      message.textContent = 'New passwords do not match.'; message.classList.remove('hidden'); return;
+    }
+    try {
+      const response = await fetch('/api/users/me/password', {
+        method: 'PUT', credentials: 'same-origin', headers: authHeaders(),
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Unable to change password');
+      window.currentUser = data.user;
+      location.reload();
+    } catch (error) {
+      message.textContent = error.message; message.classList.remove('hidden');
+    }
+  });
+}
+
+window.aitsmReady = loadAuthenticatedUser().then(user => {
+  if (user?.mustChangePassword) window.setTimeout(requireTemporaryPasswordChange, 0);
+  return user;
+});
 
 function sharedStylesReady() {
   return getComputedStyle(document.documentElement).getPropertyValue('--primary').trim().length > 0;
@@ -276,6 +379,11 @@ function enforcePageAccess() {
   }
 
   if (isAdminPortalRole(role) && endUserOnlyPages.includes(page)) {
+    location.href = '/dashboard-admin';
+    return;
+  }
+
+  if (page === 'settings' && role !== 'superadmin') {
     location.href = '/dashboard-admin';
     return;
   }
@@ -420,6 +528,7 @@ function ensurePasswordModal() {
       </form>
     </section>`;
   document.body.appendChild(modal);
+  enablePasswordVisibilityFields(modal);
 
   document.getElementById('passwordChangeForm')?.addEventListener('submit', submitPasswordChange);
   document.getElementById('passwordChangeCancel')?.addEventListener('click', closePasswordModal);
@@ -512,6 +621,8 @@ async function submitPasswordChange(event) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  enablePasswordVisibilityFields();
+  observePasswordVisibilityFields();
   await ensureSharedStylesheet();
   ensurePageSplash();
   await window.aitsmReady;
@@ -610,7 +721,7 @@ function openAitsmChat(colleagueId = null) {
 function globalNavigationItems() {
   const admin = isAdminPortalRole();
   return admin
-    ? [{ label: 'Dashboard', href: '/dashboard-admin' }, { label: 'Ticket management', href: '/ticket-management' }, { label: 'User management', href: '/user-management' }, { label: 'Settings', href: '/settings' }, { label: 'Colleagues & Chat', href: '/colleagues' }, { label: 'Profile', href: '/profile' }]
+    ? [{ label: 'Dashboard', href: '/dashboard-admin' }, { label: 'Ticket management', href: '/ticket-management' }, { label: 'User management', href: '/user-management' }, ...(currentRole() === 'superadmin' ? [{ label: 'Settings', href: '/settings' }] : []), { label: 'Colleagues & Chat', href: '/colleagues' }, { label: 'Profile', href: '/profile' }]
     : [{ label: 'Dashboard', href: '/dashboard-user' }, { label: 'Create ticket', href: '/create-ticket' }, { label: 'My tickets', href: '/tickets' }, { label: 'Knowledge base', href: '/knowledge-library' }, { label: 'AI assistant', href: '/ai-assistant' }, { label: 'Colleagues & Chat', href: '/colleagues' }, { label: 'Profile', href: '/profile' }];
 }
 

@@ -220,7 +220,17 @@ class AuthService(
     }
 
     fun updateUserRole(targetUserId: Int, role: UserRole, actorUserId: Int?): User {
-        require(role == UserRole.END_USER) { "Direct admin grant disabled. Use secure admin-grant flow." }
+        requireNotNull(actorUserId) { "Authenticated Super Admin is required" }
+        require(targetUserId != actorUserId) { "You cannot change your own privileged role" }
+        require(role in setOf(UserRole.END_USER, UserRole.SUPERADMIN)) {
+            "Direct admin grant disabled. Use secure admin-grant flow."
+        }
+        val target = userRepository.findById(targetUserId) ?: error("User not found")
+        if (role == UserRole.SUPERADMIN) {
+            require(target.role in setOf(UserRole.ADMIN, UserRole.IT_ADMIN)) {
+                "Only an existing administrator can be promoted to Super Admin"
+            }
+        }
 
         val updated = userRepository.updateRole(targetUserId, role) ?: error("User not found or cannot be modified")
         auditRepository.log(actorUserId, "Updated role for user ${updated.email} to ${role.name}", "users")

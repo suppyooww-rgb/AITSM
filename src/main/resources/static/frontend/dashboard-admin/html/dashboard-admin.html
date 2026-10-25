@@ -9,6 +9,20 @@
     <section id='summaryCards' class='grid stats summary-balanced-grid'></section>
     <section id='operationalReportStats' class='grid stats compact-grid' style='margin-top:16px'></section>
 
+    <section id='adminSelfCollectorCard' class='card hidden' style='margin-top:16px'>
+      <div class='card-head'>
+        <div>
+          <h3 class='section-title'>Protect This Admin Computer</h3>
+          <p class='section-subtitle'>Install the AITSM collector for this computer's inventory and health reporting.</p>
+        </div>
+        <span class='card-icon'>PC</span>
+      </div>
+      <p class='small'>This SELF-scope installer monitors only this computer. It cannot scan the LAN or run the AI Bridge.</p>
+      <div class='inline-actions'><button id='downloadAdminSelfCollectorBtn' class='btn btn-primary' type='button'>Download Device Collector</button></div>
+      <p id='adminSelfCollectorStatus' class='small' role='status'></p>
+      <div id='adminSelfCollectors' class='settings-list'></div>
+    </section>
+
     <section class='grid admin-panels' style='margin-top:16px'>
       <article class='card'>
         <div class='card-head'><div><h3 class='section-title'>SLA Intelligence</h3><p class='section-subtitle'>24/7 response and resolution compliance.</p></div><span class='card-icon'>SLA</span></div>
@@ -27,6 +41,7 @@
             <p class='section-subtitle'>Monthly and weekly movement of active and resolved tickets.</p>
           </div>
           <div class='inline-actions dashboard-trend-controls'>
+            <button id='exportAnalyticsBtn' class='btn btn-ghost' type='button'>Export analytics CSV</button>
             <select id='trendViewSelect' aria-label='Ticket trend view'>
               <option value='monthly'>Monthly</option>
               <option value='weekly'>Weekly</option>
@@ -48,6 +63,7 @@
         </div>
         <div id='ticketTrendChart' class='chart-placeholder admin-chart'></div>
         <div id='ticketTrendDetails' class='small' style='margin-top:12px'></div>
+        <p id='analyticsExportStatus' class='small' role='status'></p>
     </section>
 
     <section class='card' style='margin-top:16px'>

@@ -3,9 +3,11 @@ package backend.repository
 import backend.config.SLAPoliciesTable
 import backend.config.SlaRiskPredictionsTable
 import backend.config.TicketHistoryTable
+import backend.config.TicketAttachmentsTable
 import backend.config.TicketsTable
 import backend.models.Ticket
 import backend.models.TicketHistoryEvent
+import backend.models.TicketAttachment
 import backend.models.TicketRequest
 import backend.models.TicketStatus
 import org.jetbrains.exposed.sql.ResultRow
@@ -20,8 +22,11 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import java.time.Duration
 import java.time.LocalDateTime
+import java.util.Base64
+import java.util.UUID
 
 class TicketRepository {
+    data class AttachmentContent(val metadata: TicketAttachment, val bytes: ByteArray)
     fun create(userId: Int, req: TicketRequest): Ticket = transaction {
         val now = LocalDateTime.now()
         val (responseTarget, resolutionTarget) = policyTargets(req.priority)
@@ -89,6 +94,38 @@ class TicketRepository {
                 )
             }
             .reversed()
+    }
+
+    fun attachmentCount(ticketId: Int): Long = transaction {
+        TicketAttachmentsTable.selectAll().where { TicketAttachmentsTable.ticketId eq ticketId }.count()
+    }
+
+    fun addAttachment(ticketIdValue: Int, uploadedByValue: Int, name: String, type: String, bytes: ByteArray): TicketAttachment = transaction {
+        val idValue = UUID.randomUUID()
+        val now = LocalDateTime.now()
+        TicketAttachmentsTable.insert {
+            it[id] = idValue
+            it[ticketId] = ticketIdValue
+            it[uploadedBy] = uploadedByValue
+            it[originalName] = name
+            it[contentType] = type
+            it[sizeBytes] = bytes.size
+            it[contentBase64] = Base64.getEncoder().encodeToString(bytes)
+            it[createdAt] = now
+        }
+        TicketAttachment(idValue.toString(), ticketIdValue, name, type, bytes.size, uploadedByValue, now.toString(), "/api/tickets/$ticketIdValue/attachments/$idValue")
+    }
+
+    fun attachments(ticketIdValue: Int): List<TicketAttachment> = transaction {
+        TicketAttachmentsTable.selectAll().where { TicketAttachmentsTable.ticketId eq ticketIdValue }
+            .orderBy(TicketAttachmentsTable.createdAt)
+            .map(::toAttachment)
+    }
+
+    fun attachment(ticketIdValue: Int, idValue: UUID): AttachmentContent? = transaction {
+        TicketAttachmentsTable.selectAll().where {
+            (TicketAttachmentsTable.ticketId eq ticketIdValue) and (TicketAttachmentsTable.id eq idValue)
+        }.singleOrNull()?.let { AttachmentContent(toAttachment(it), Base64.getDecoder().decode(it[TicketAttachmentsTable.contentBase64])) }
     }
 
     fun update(id: Int, req: TicketRequest, expectedAssigneeUserId: Int? = null, enforceOwner: Boolean = false): Ticket? = transaction {
@@ -384,6 +421,17 @@ class TicketRepository {
             overdue = resolutionState == "BREACHED" && !terminal
         )
     }
+
+    private fun toAttachment(row: ResultRow) = TicketAttachment(
+        id = row[TicketAttachmentsTable.id].toString(),
+        ticketId = row[TicketAttachmentsTable.ticketId],
+        originalName = row[TicketAttachmentsTable.originalName],
+        contentType = row[TicketAttachmentsTable.contentType],
+        sizeBytes = row[TicketAttachmentsTable.sizeBytes],
+        uploadedBy = row[TicketAttachmentsTable.uploadedBy],
+        createdAt = row[TicketAttachmentsTable.createdAt].toString(),
+        downloadUrl = "/api/tickets/${row[TicketAttachmentsTable.ticketId]}/attachments/${row[TicketAttachmentsTable.id]}"
+    )
 
     private fun policyTargets(priority: String): Pair<Int, Int> =
         SLAPoliciesTable.selectAll().where { SLAPoliciesTable.priority eq priority }.singleOrNull()?.let {

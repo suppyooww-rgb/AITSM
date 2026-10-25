@@ -17,6 +17,7 @@ object UsersTable : Table("users") {
     val department = varchar("department", 120)
     val profilePhotoUrl = varchar("profile_photo_url", 500).nullable()
     val passwordHash = varchar("password_hash", 255)
+    val mustChangePassword = bool("must_change_password").default(false)
     val role = varchar("role", 20).index()
     val emailVerified = bool("email_verified").default(false)
     val accountState = varchar("account_state", 32).default("PENDING_VERIFICATION").index()
@@ -253,6 +254,28 @@ object MonitoringDeviceAddressesTable : Table("monitoring_device_addresses") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object MonitoringLanObservationsTable : Table("monitoring_lan_observations") {
+    val id = long("id").autoIncrement()
+    val collectorId = uuid("collector_id").references(MonitoringCollectorsTable.id, onDelete = ReferenceOption.CASCADE).index()
+    val identityKey = varchar("identity_key", 220)
+    val deviceKey = varchar("device_key", 200)
+    val hostname = varchar("hostname", 200)
+    val ipAddress = varchar("ip_address", 45).index()
+    val macAddress = varchar("mac_address", 32).nullable()
+    val deviceUuid = varchar("device_uuid", 160).nullable()
+    val osDetails = varchar("os_details", 300).nullable()
+    val telemetryAvailable = bool("telemetry_available")
+    val cpuUsagePercent = decimal("cpu_usage_percent", 5, 2).nullable()
+    val memoryUsagePercent = decimal("memory_usage_percent", 5, 2).nullable()
+    val storageTotalBytes = long("storage_total_bytes").nullable()
+    val storageUsedBytes = long("storage_used_bytes").nullable()
+    val measurementAt = datetime("measurement_at").nullable()
+    val firstSeenAt = datetime("first_seen_at")
+    val lastSeenAt = datetime("last_seen_at").index()
+    init { uniqueIndex(collectorId, identityKey) }
+    override val primaryKey = PrimaryKey(id)
+}
+
 object DiscoveryRequestsTable : Table("monitoring_discovery_requests") {
     val id = uuid("id")
     val collectorId = uuid("collector_id").references(MonitoringCollectorsTable.id, onDelete = ReferenceOption.CASCADE).index()
@@ -318,6 +341,18 @@ object SlaRiskPredictionsTable : Table("sla_risk_predictions") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object TicketAttachmentsTable : Table("ticket_attachments") {
+    val id = uuid("id")
+    val ticketId = integer("ticket_id").references(TicketsTable.id, onDelete = ReferenceOption.CASCADE).index()
+    val uploadedBy = integer("uploaded_by").references(UsersTable.id, onDelete = ReferenceOption.CASCADE).index()
+    val originalName = varchar("original_name", 180)
+    val contentType = varchar("content_type", 40)
+    val sizeBytes = integer("size_bytes")
+    val contentBase64 = text("content_base64")
+    val createdAt = datetime("created_at").index()
+    override val primaryKey = PrimaryKey(id)
+}
+
 object NotificationsTable : Table("notifications") {
     val id = integer("id").autoIncrement()
     val userId = integer("user_id").references(UsersTable.id, onDelete = ReferenceOption.CASCADE).index()
@@ -355,6 +390,41 @@ object KnowledgeArticlesTable : Table("knowledge_articles") {
     val content = text("content")
     val category = varchar("category", 100)
     val createdAt = datetime("created_at").index()
+    override val primaryKey = PrimaryKey(id)
+}
+
+object KnowledgeIssuePatternsTable : Table("knowledge_issue_patterns") {
+    val id = integer("id").autoIncrement()
+    val category = varchar("category", 100).index()
+    val normalizedTerms = text("normalized_terms")
+    val representativeTitle = varchar("representative_title", 200)
+    val createdAt = datetime("created_at")
+    val updatedAt = datetime("updated_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+object KnowledgeIssueOccurrencesTable : Table("knowledge_issue_occurrences") {
+    val id = long("id").autoIncrement()
+    val patternId = integer("pattern_id").references(KnowledgeIssuePatternsTable.id, onDelete = ReferenceOption.CASCADE).index()
+    val ticketId = integer("ticket_id").references(TicketsTable.id, onDelete = ReferenceOption.CASCADE).uniqueIndex()
+    val resolution = text("resolution")
+    val createdAt = datetime("created_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+object KnowledgeCandidatesTable : Table("knowledge_candidates") {
+    val id = integer("id").autoIncrement()
+    val patternId = integer("pattern_id").references(KnowledgeIssuePatternsTable.id, onDelete = ReferenceOption.CASCADE).uniqueIndex()
+    val title = varchar("title", 200)
+    val content = text("content")
+    val category = varchar("category", 100)
+    val occurrenceCount = integer("occurrence_count")
+    val status = varchar("status", 20).default("READY").index()
+    val publishedArticleId = integer("published_article_id").references(KnowledgeArticlesTable.id, onDelete = ReferenceOption.SET_NULL).nullable()
+    val createdAt = datetime("created_at")
+    val updatedAt = datetime("updated_at")
+    val reviewedAt = datetime("reviewed_at").nullable()
+    val reviewedBy = integer("reviewed_by").references(UsersTable.id, onDelete = ReferenceOption.SET_NULL).nullable()
     override val primaryKey = PrimaryKey(id)
 }
 
@@ -494,14 +564,19 @@ object DatabaseFactory {
                 CollectorEnrollmentCodesTable,
                 MonitoringDevicesTable,
                 MonitoringDeviceAddressesTable,
+                MonitoringLanObservationsTable,
                 DiscoveryRequestsTable,
                 TicketsTable,
                 TicketHistoryTable,
+                TicketAttachmentsTable,
                 SlaRiskPredictionsTable,
                 NotificationsTable,
                 SLAPoliciesTable,
                 SystemSettingsTable,
                 KnowledgeArticlesTable,
+                KnowledgeIssuePatternsTable,
+                KnowledgeIssueOccurrencesTable,
+                KnowledgeCandidatesTable,
                 AuditLogsTable,
                 AIConversationMessagesTable,
                 InventoryAssetsTable,

@@ -5,6 +5,7 @@ import backend.config.CollectorEnrollmentCodesTable
 import backend.config.MonitoringCollectorsTable
 import backend.config.MonitoringDeviceAddressesTable
 import backend.config.MonitoringDevicesTable
+import backend.config.MonitoringLanObservationsTable
 import backend.models.CollectorDeviceReport
 import backend.models.CollectorEnrollmentRequest
 import backend.models.CollectorEnrollmentResponse
@@ -17,6 +18,7 @@ import backend.models.LanDeviceDto
 import backend.models.normalizeCollectorMeasurement
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
@@ -155,6 +157,27 @@ class MonitoringRepository(private val clock: Clock = Clock.systemUTC()) {
         }) { it[archivedAt] = now() } > 0
     }
 
+    fun remove(id: UUID): Boolean = transaction {
+        val removedAt = now()
+        MonitoringCollectorsTable.update({
+            (MonitoringCollectorsTable.id eq id) and MonitoringCollectorsTable.archivedAt.isNull()
+        }) {
+            it[revokedAt] = removedAt
+            it[archivedAt] = removedAt
+        } > 0
+    }
+
+    fun removeOwned(id: UUID, ownerId: Int): Boolean = transaction {
+        val removedAt = now()
+        MonitoringCollectorsTable.update({
+            (MonitoringCollectorsTable.id eq id) and (MonitoringCollectorsTable.ownerUserId eq ownerId) and
+                MonitoringCollectorsTable.archivedAt.isNull()
+        }) {
+            it[revokedAt] = removedAt
+            it[archivedAt] = removedAt
+        } > 0
+    }
+
     fun listCollectors(ownerId: Int? = null, includeArchived: Boolean = false): List<CollectorView> = transaction {
         val instantNow = clock.instant()
         val query = MonitoringCollectorsTable.selectAll().let { base ->
@@ -203,7 +226,7 @@ class MonitoringRepository(private val clock: Clock = Clock.systemUTC()) {
         }) { it[revokedAt] = now() } > 0
     }
 
-    fun saveReport(collectorId: UUID, report: CollectorReportRequest, measurement: Instant): Pair<Instant, Int> = transaction {
+    fun saveReport(collectorId: UUID, collectorScope: String, report: CollectorReportRequest, measurement: Instant): Pair<Instant, Int> = transaction {
         val received = now()
         MonitoringCollectorsTable.update({ (MonitoringCollectorsTable.id eq collectorId) and MonitoringCollectorsTable.revokedAt.isNull() }) {
             it[lastSeenAt] = received
@@ -212,7 +235,13 @@ class MonitoringRepository(private val clock: Clock = Clock.systemUTC()) {
             it[lastError] = report.previousError?.replace(Regex("[\\r\\n]+"), " ")?.take(500)
             it[consecutiveFailures] = report.consecutiveFailures.coerceIn(0, 100_000)
         }
-        report.devices.forEach { device -> upsertDevice(collectorId, device, measurement, received) }
+        report.devices.forEach { device ->
+            if (collectorScope == "LAN") upsertLanObservation(collectorId, device, measurement, received)
+            if (device.telemetryAvailable) upsertDevice(collectorId, device, measurement, received)
+        }
+        if (collectorScope == "LAN") {
+            MonitoringLanObservationsTable.deleteWhere { lastSeenAt less received.minusDays(30) }
+        }
         report.discoveryRequestId?.let { rawId ->
             val requestId = runCatching { UUID.fromString(rawId) }.getOrNull()
             if (requestId != null) {
@@ -224,6 +253,52 @@ class MonitoringRepository(private val clock: Clock = Clock.systemUTC()) {
             }
         }
         received.toInstant(ZoneOffset.UTC) to report.devices.size
+    }
+
+    private fun org.jetbrains.exposed.sql.Transaction.upsertLanObservation(
+        collectorId: UUID,
+        device: CollectorDeviceReport,
+        fallbackMeasurement: Instant,
+        received: LocalDateTime
+    ) {
+        val uuid = normalizedDeviceUuid(device.inventory?.deviceUuid)
+        val mac = normalizedMac(device.macAddress)
+        val identity = uuid?.let { "uuid:$it" } ?: mac?.let { "mac:$it" }
+            ?: "collector:$collectorId:${device.deviceKey.lowercase()}"
+        val measured = runCatching {
+            normalizeCollectorMeasurement(device.measurementAt ?: fallbackMeasurement.toString(), fallbackMeasurement)
+        }.getOrDefault(fallbackMeasurement)
+        val existing = MonitoringLanObservationsTable.selectAll().where {
+            (MonitoringLanObservationsTable.collectorId eq collectorId) and
+                (MonitoringLanObservationsTable.identityKey eq identity)
+        }.singleOrNull()
+        val values: MonitoringLanObservationsTable.(org.jetbrains.exposed.sql.statements.UpdateBuilder<*>) -> Unit = { statement ->
+            statement[MonitoringLanObservationsTable.deviceKey] = device.deviceKey
+            statement[identityKey] = identity
+            statement[hostname] = device.hostname
+            statement[ipAddress] = device.ipAddress
+            statement[macAddress] = device.macAddress
+            statement[deviceUuid] = uuid
+            statement[osDetails] = device.osDetails
+            statement[telemetryAvailable] = device.telemetryAvailable
+            statement[cpuUsagePercent] = device.cpuUsagePercent?.toBigDecimal()
+            statement[memoryUsagePercent] = device.memoryUsagePercent?.toBigDecimal()
+            statement[storageTotalBytes] = device.storageTotalBytes
+            statement[storageUsedBytes] = device.storageUsedBytes
+            statement[measurementAt] = LocalDateTime.ofInstant(measured, ZoneOffset.UTC)
+            statement[lastSeenAt] = received
+        }
+        if (existing == null) {
+            MonitoringLanObservationsTable.insert {
+                it[MonitoringLanObservationsTable.collectorId] = collectorId
+                it[firstSeenAt] = received
+                values(MonitoringLanObservationsTable, it)
+            }
+        } else {
+            MonitoringLanObservationsTable.update({ MonitoringLanObservationsTable.id eq existing[MonitoringLanObservationsTable.id] }) {
+                values(MonitoringLanObservationsTable, it)
+            }
+        }
     }
 
     private fun org.jetbrains.exposed.sql.Transaction.upsertDevice(collectorId: UUID, device: CollectorDeviceReport, fallbackMeasurement: Instant, received: LocalDateTime) {
@@ -364,6 +439,74 @@ class MonitoringRepository(private val clock: Clock = Clock.systemUTC()) {
         collapseLegacyDeviceRows(devices)
     }
 
+    fun lanDevices(includeHistory: Boolean = false): List<LanDeviceDto> = transaction {
+        val instantNow = clock.instant()
+        val onlineAfter = instantNow.minusSeconds(120)
+        val collectors = MonitoringCollectorsTable.selectAll().where {
+            (MonitoringCollectorsTable.scope eq "LAN") and
+                MonitoringCollectorsTable.revokedAt.isNull() and
+                MonitoringCollectorsTable.archivedAt.isNull()
+        }.associateBy { it[MonitoringCollectorsTable.id] }
+        if (collectors.isEmpty()) return@transaction emptyList()
+
+        val telemetryRows = MonitoringDevicesTable.selectAll().where { MonitoringDevicesTable.telemetryAvailable eq true }
+            .orderBy(MonitoringDevicesTable.receivedAt, SortOrder.DESC).toList()
+        val telemetryByIdentity = telemetryRows.mapNotNull { row ->
+            row[MonitoringDevicesTable.identityKey]?.let { it to row }
+        }.groupBy({ it.first }, { it.second }).mapValues { it.value.first() }
+        val telemetryByMac = telemetryRows.mapNotNull { row ->
+            normalizedMac(row[MonitoringDevicesTable.macAddress])?.let { it to row }
+        }.groupBy({ it.first }, { it.second }).mapValues { it.value.first() }
+
+        val observations = MonitoringLanObservationsTable.selectAll()
+            .orderBy(MonitoringLanObservationsTable.lastSeenAt, SortOrder.DESC)
+            .mapNotNull { row ->
+                val collector = collectors[row[MonitoringLanObservationsTable.collectorId]] ?: return@mapNotNull null
+                val lastLanSeen = row[MonitoringLanObservationsTable.lastSeenAt]
+                val collectorLastSeen = collector[MonitoringCollectorsTable.lastSeenAt]
+                val collectorIsCurrent = collectorLastSeen?.toInstant(ZoneOffset.UTC)?.isAfter(onlineAfter) == true
+                val agent = telemetryByIdentity[row[MonitoringLanObservationsTable.identityKey]]
+                    ?: normalizedMac(row[MonitoringLanObservationsTable.macAddress])?.let(telemetryByMac::get)
+                val telemetryReceived = agent?.get(MonitoringDevicesTable.receivedAt)
+                val telemetryState = deriveTelemetryState(telemetryReceived?.toInstant(ZoneOffset.UTC), instantNow)
+                val lanPresence = deriveLanPresenceState(
+                    collectorIsCurrent,
+                    lastLanSeen.toInstant(ZoneOffset.UTC),
+                    telemetryState,
+                    instantNow
+                )
+                val telemetryIsLive = telemetryState == "AVAILABLE"
+                LanDeviceDto(
+                    id = "lan-observation-${row[MonitoringLanObservationsTable.id]}",
+                    hostname = row[MonitoringLanObservationsTable.hostname],
+                    ipAddress = row[MonitoringLanObservationsTable.ipAddress],
+                    reachable = lanPresence == "ON_LAN",
+                    telemetryAvailable = telemetryIsLive,
+                    telemetrySourceType = if (agent != null) "COLLECTOR_AGENT" else "LAN_OBSERVED",
+                    cpuUsagePercent = if (telemetryIsLive) agent?.get(MonitoringDevicesTable.cpuUsagePercent)?.toDouble() else null,
+                    memoryUsagePercent = if (telemetryIsLive) agent?.get(MonitoringDevicesTable.memoryUsagePercent)?.toDouble() else null,
+                    lastSeen = iso(lastLanSeen)!!,
+                    measurementAt = iso(row[MonitoringLanObservationsTable.measurementAt]),
+                    receivedAt = iso(lastLanSeen),
+                    stale = lanPresence == "STALE",
+                    collectorId = row[MonitoringLanObservationsTable.collectorId].toString(),
+                    macAddress = row[MonitoringLanObservationsTable.macAddress],
+                    osDetails = agent?.get(MonitoringDevicesTable.osDetails) ?: row[MonitoringLanObservationsTable.osDetails],
+                    storageTotalBytes = if (telemetryIsLive) agent?.get(MonitoringDevicesTable.storageTotalBytes) else null,
+                    storageUsedBytes = if (telemetryIsLive) agent?.get(MonitoringDevicesTable.storageUsedBytes) else null,
+                    identityKey = row[MonitoringLanObservationsTable.identityKey],
+                    deviceUuid = agent?.get(MonitoringDevicesTable.deviceUuid) ?: row[MonitoringLanObservationsTable.deviceUuid],
+                    observedIpAddresses = listOf(row[MonitoringLanObservationsTable.ipAddress]),
+                    lanPresenceState = lanPresence,
+                    telemetryState = telemetryState,
+                    lastLanSeenAt = iso(lastLanSeen),
+                    lastTelemetryAt = iso(telemetryReceived),
+                    collectorSiteId = collector[MonitoringCollectorsTable.siteId]
+                )
+            }
+        selectLanObservations(observations, includeHistory, instantNow)
+    }
+
     fun queueDiscovery(): Pair<UUID, UUID> = transaction {
         val collector = MonitoringCollectorsTable.selectAll().where {
             MonitoringCollectorsTable.revokedAt.isNull() and
@@ -410,6 +553,50 @@ class MonitoringRepository(private val clock: Clock = Clock.systemUTC()) {
 internal fun normalizedDeviceUuid(value: String?): String? = value?.trim()?.lowercase()
     ?.takeIf { it.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) }
     ?.takeUnless { it == "00000000-0000-0000-0000-000000000000" || it == "ffffffff-ffff-ffff-ffff-ffffffffffff" }
+
+internal fun deriveTelemetryState(lastTelemetryAt: Instant?, now: Instant): String = when {
+    lastTelemetryAt == null -> "UNAVAILABLE"
+    lastTelemetryAt.isAfter(now.minusSeconds(120)) -> "AVAILABLE"
+    lastTelemetryAt.isAfter(now.minusSeconds(600)) -> "STALE"
+    else -> "OFFLINE"
+}
+
+internal fun deriveLanPresenceState(
+    collectorIsCurrent: Boolean,
+    lastLanSeenAt: Instant,
+    telemetryState: String,
+    now: Instant
+): String = when {
+    !collectorIsCurrent -> "UNKNOWN"
+    lastLanSeenAt.isAfter(now.minusSeconds(120)) -> "ON_LAN"
+    telemetryState == "AVAILABLE" -> "OFF_LAN"
+    lastLanSeenAt.isAfter(now.minusSeconds(600)) -> "STALE"
+    else -> "OFFLINE"
+}
+
+internal fun selectLanObservations(
+    observations: List<LanDeviceDto>,
+    includeHistory: Boolean,
+    now: Instant
+): List<LanDeviceDto> = collapseLanObservationRows(
+    collapseLanObservationRows(observations) {
+        "${it.collectorSiteId.orEmpty().lowercase()}|identity:${it.identityKey ?: it.ipAddress}"
+    }
+) {
+    "${it.collectorSiteId.orEmpty().lowercase()}|ip:${it.ipAddress}"
+}
+    .filter { device ->
+        includeHistory || (device.lanPresenceState != "UNKNOWN" &&
+            (device.lanPresenceState != "OFFLINE" ||
+                Instant.parse(device.lastLanSeenAt ?: device.lastSeen).isAfter(now.minusSeconds(86_400))))
+    }
+    .sortedByDescending { it.lastLanSeenAt ?: it.lastSeen }
+
+private fun collapseLanObservationRows(
+    observations: List<LanDeviceDto>,
+    key: (LanDeviceDto) -> String
+): List<LanDeviceDto> = observations.groupBy(key).values
+    .map { matches -> matches.maxBy { it.lastLanSeenAt ?: it.lastSeen } }
 
 internal fun normalizedMac(value: String?): String? = value?.filter(Char::isLetterOrDigit)?.uppercase()
     ?.takeIf { it.length == 12 && it.all { character -> character in '0'..'9' || character in 'A'..'F' } }

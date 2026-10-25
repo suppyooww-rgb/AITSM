@@ -4,14 +4,37 @@ import backend.models.UserRole
 import backend.models.TicketStatus
 import backend.models.AnalyticsResponse
 import backend.security.requireRole
+import backend.security.requireReauthentication
+import backend.security.userId
 import backend.services.AIService
 import backend.services.MonitoringService
+import backend.services.ReauthScope
+import backend.services.ReauthenticationService
 import backend.services.TicketService
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import java.time.LocalDate
+import java.time.ZoneOffset
 
-fun Route.analyticsRoutes(ticketService: TicketService, monitoringService: MonitoringService, aiService: AIService) {
+fun Route.analyticsRoutes(
+    ticketService: TicketService,
+    monitoringService: MonitoringService,
+    aiService: AIService,
+    reauthentication: ReauthenticationService
+) {
     route("/api/analytics") {
+        get("/export") {
+            if (!call.requireRole(UserRole.ADMIN)) return@get
+            if (!call.requireReauthentication(reauthentication, ReauthScope.SENSITIVE_EXPORT)) return@get
+            val actorId = call.userId() ?: return@get
+            val csv = ticketService.exportAnalyticsCsv(actorId)
+            val date = LocalDate.now(ZoneOffset.UTC)
+            call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+            call.response.headers.append(HttpHeaders.ContentDisposition, "attachment; filename=\"AITSM-analytics-$date.csv\"")
+            call.respondText(csv, ContentType.Text.CSV)
+        }
         get("/ticket-trends") {
             if (!call.requireRole(UserRole.ADMIN)) return@get
             val tickets = ticketService.list(null, true, 500, 0).items

@@ -34,7 +34,7 @@ class FrontendSafetyContractTest {
         val page = Files.readString(Path.of("src/main/resources/static/frontend/monitoring/html/monitoring.html"))
         assertFalse(monitoring.contains("ManagementFactory"))
         assertFalse(monitoring.contains("discoverArpPeers"))
-        assertTrue(frontend.contains("Last data received"))
+        assertTrue(frontend.contains("Last LAN report"))
         assertFalse(frontend.contains("Host CPU"))
         assertTrue(frontend.contains("waiting for LAN collector"))
         assertTrue(frontend.contains("['PENDING', 'IN_PROGRESS'].includes(discoveryState)"))
@@ -74,6 +74,8 @@ class FrontendSafetyContractTest {
         val frontend = Files.readString(Path.of("src/main/resources/static/frontend/user-management/js/user-management.js"))
         val page = Files.readString(Path.of("src/main/resources/static/frontend/user-management/html/user-management.html"))
         val routes = Files.readString(Path.of("src/main/kotlin/backend/routes/AuthRoutes.kt"))
+        val common = Files.readString(Path.of("src/main/resources/static/frontend/modules/common/js/app.js"))
+        val loginScript = Files.readString(Path.of("src/main/resources/static/frontend/login/js/auth.js"))
 
         assertTrue(frontend.contains("await requestReauthPassword()"))
         assertFalse(frontend.contains("prompt(`Verify your password"))
@@ -82,6 +84,31 @@ class FrontendSafetyContractTest {
         assertTrue(page.contains("id='temporaryPasswordConfirm' type='password'"))
         assertTrue(routes.contains("AdminSensitiveVerifyResponse("))
         assertTrue(routes.contains("Verified invitation accounts cannot be returned to pending status"))
+        assertTrue(common.contains("function enablePasswordVisibilityFields(scope = document)"))
+        assertTrue(common.contains("scope.querySelectorAll(\"input[type='password']\")"))
+        assertTrue(common.contains("toggle.dataset.passwordVisibilityBound = 'true'"))
+        assertTrue(common.contains("observePasswordVisibilityFields()"))
+        assertTrue(common.contains("new MutationObserver"))
+        assertTrue(common.contains("enablePasswordVisibilityFields(modal)"))
+        assertTrue(loginScript.contains("if (toggle.dataset.passwordVisibilityBound === 'true') return"))
+    }
+
+    @Test fun `super admin accounts cannot be deleted and promotion remains super admin only`() {
+        val frontend = Files.readString(Path.of("src/main/resources/static/frontend/user-management/js/user-management.js"))
+        val routes = Files.readString(Path.of("src/main/kotlin/backend/routes/AuthRoutes.kt"))
+        val service = Files.readString(Path.of("src/main/kotlin/backend/services/AuthService.kt"))
+        val repository = Files.readString(Path.of("src/main/kotlin/backend/repository/UserRepository.kt"))
+
+        assertTrue(frontend.contains("const targetIsSuperAdmin = targetRole === 'superadmin'"))
+        assertTrue(frontend.contains("superAdmin || !targetIsAdministrator"))
+        assertTrue(frontend.contains("!targetIsSuperAdmin"))
+        assertTrue(frontend.contains("Promote to Super Admin"))
+        assertTrue(frontend.contains("promoteUserToSuperAdmin"))
+        assertTrue(routes.contains("if (!call.requireRole(UserRole.SUPERADMIN)) return@put"))
+        assertTrue(routes.contains("Super Admin accounts cannot be deleted"))
+        assertTrue(service.contains("Only an existing administrator can be promoted to Super Admin"))
+        assertTrue(service.contains("targetUserId != actorUserId"))
+        assertTrue(repository.contains("if (row[UsersTable.role] == UserRole.SUPERADMIN.name) return@transaction null"))
     }
 
     @Test fun `ticket workspaces load every paginated ticket`() {
@@ -131,13 +158,35 @@ class FrontendSafetyContractTest {
         assertTrue(service.contains("existing.status !in setOf(TicketStatus.RESOLVED, TicketStatus.CLOSED)"))
     }
 
-    @Test fun `device surfaces are collector only and inventory details are click through`() {
+    @Test fun `device surfaces separate lan observations from managed inventory`() {
         val monitoring = Files.readString(Path.of("src/main/kotlin/backend/services/MonitoringService.kt"))
+        val repository = Files.readString(Path.of("src/main/kotlin/backend/repository/MonitoringRepository.kt"))
         val inventoryService = Files.readString(Path.of("src/main/kotlin/backend/services/InventoryService.kt"))
+        val monitoringHtml = Files.readString(Path.of("src/main/resources/static/frontend/monitoring/html/monitoring.html"))
+        val monitoringScript = Files.readString(Path.of("src/main/resources/static/frontend/monitoring/js/monitoring.js"))
         val inventoryHtml = Files.readString(Path.of("src/main/resources/static/frontend/inventory/html/inventory.html"))
         val inventoryScript = Files.readString(Path.of("src/main/resources/static/frontend/inventory/js/inventory.js"))
 
-        assertTrue(monitoring.contains("visibleCollectorDevices"))
+        assertTrue(monitoring.contains("fun lanDevices(includeHistory: Boolean = false)"))
+        assertTrue(repository.contains("MonitoringLanObservationsTable"))
+        assertTrue(repository.contains("collectorScope == \"LAN\""))
+        assertTrue(monitoringHtml.contains("LAN Presence <span class='monitor-info-icon'"))
+        assertTrue(monitoringHtml.contains("Telemetry Health <span class='monitor-info-icon'"))
+        assertFalse(monitoringHtml.contains("<th>Last Telemetry</th>"))
+        assertTrue(monitoringScript.contains("lanPresenceState"))
+        assertTrue(monitoringScript.contains("lastTelemetryAt"))
+        assertTrue(monitoringScript.contains("Telemetry was received within the last two minutes."))
+        assertTrue(monitoringScript.contains("state === 'AVAILABLE' ? 100 : state === 'STALE' ? 50 : 0"))
+        assertTrue(monitoringScript.contains("No action needed."))
+        assertTrue(monitoringScript.contains("Check the collector connection."))
+        assertTrue(monitoringScript.contains("Start or repair the collector."))
+        assertTrue(monitoringScript.contains("Install the device collector."))
+        assertTrue(monitoringScript.contains("class='monitor-telemetry-cell'"))
+        assertTrue(monitoringScript.contains("class='monitor-info-icon'"))
+        assertTrue(monitoringScript.contains("['Telemetry Coverage', `${'$'}{Math.min(100, telemetryCoverage)}%`]"))
+        assertTrue(monitoringScript.contains("Review the ${'$'}{missing}"))
+        assertTrue(monitoringHtml.contains("Show 30-day history"))
+        assertTrue(monitoringScript.contains("?history=true"))
         assertTrue(monitoring.contains("it.telemetryAvailable && it.inventory != null"))
         assertTrue(inventoryService.contains("filters.copy(connectionSource = \"agent\")"))
         assertTrue(inventoryScript.contains("class='inventory-device-row'"))
@@ -154,6 +203,37 @@ class FrontendSafetyContractTest {
         assertTrue(dashboard.contains("metric.value >= 70 ? { tone: 'resolved', label: 'Stable' }"))
     }
 
+    @Test fun `ticket trend remains visible when only one period has data`() {
+        val dashboard = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/js/dashboard.js"))
+        assertTrue(dashboard.contains("labels.length === 1"))
+        assertTrue(dashboard.contains("points(activeSeries, '#2563eb', 'Active tickets')"))
+        assertTrue(dashboard.contains("points(resolvedSeries, '#22c55e', 'Resolved or closed tickets')"))
+        assertTrue(dashboard.contains("Active: ${'$'}{Number(activeSeries[0] || 0)}"))
+        assertTrue(dashboard.contains("Resolved: ${'$'}{Number(resolvedSeries[0] || 0)}"))
+    }
+
+    @Test fun `admin dashboard analytics remain available to regular administrators`() {
+        val dashboard = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/js/dashboard.js"))
+        val permissions = Files.readString(Path.of("src/main/kotlin/backend/security/AuthMiddleware.kt"))
+        assertTrue(permissions.contains("path.startsWith(\"/api/sla\") && method == HttpMethod.Get -> Permission.TICKET_READ_ALL"))
+        assertTrue(dashboard.contains("fetchJsonOrThrow('/api/sla/analytics').catch(() => null)"))
+        assertTrue(dashboard.contains("rawPriority.charAt(0).toUpperCase()"))
+        assertTrue(dashboard.contains("['AT', 'Active Tickets', activeCount"))
+        assertTrue(dashboard.contains("['IP', 'In Progress Tickets', inProgressCount"))
+        assertTrue(dashboard.contains("['In Progress Tickets', inProgressTickets"))
+    }
+
+    @Test fun `inventory is the single asset view and exposes department`() {
+        val application = Files.readString(Path.of("src/main/kotlin/Application.kt"))
+        val navigation = Files.readString(Path.of("src/main/resources/static/frontend/modules/sidebar/js/admin-shell.js"))
+        val inventory = Files.readString(Path.of("src/main/resources/static/frontend/inventory/html/inventory.html"))
+        assertFalse(navigation.contains("label: 'Asset Management'"))
+        assertTrue(application.contains("get(\"/assets\") { call.redirectKeepingQuery(\"/inventory\""))
+        assertTrue(inventory.contains("<th>Department</th>"))
+        assertFalse(inventory.contains("Status (A-Z)"))
+        assertFalse(inventory.contains("Status (Z-A)"))
+    }
+
     @Test fun `collector actions use a zoom friendly overflow menu`() {
         val settingsHtml = Files.readString(Path.of("src/main/resources/static/frontend/settings/html/settings.html"))
         val settingsScript = Files.readString(Path.of("src/main/resources/static/frontend/settings/js/settings.js"))
@@ -163,9 +243,26 @@ class FrontendSafetyContractTest {
         assertTrue(settingsHtml.contains("class='collector-table'"))
         assertTrue(settingsScript.contains("collectorActionMenu(item, index)"))
         assertTrue(settingsScript.contains("aria-haspopup='menu'"))
-        assertTrue(settingsScript.contains("archiveCollector"))
+        assertTrue(settingsScript.contains("removeCollector"))
+        assertTrue(settingsScript.contains("item.state !== 'REVOKED'"))
         assertTrue(settingsStyles.contains(".collector-table"))
         assertFalse(settingsStyles.contains("grid-column: 1 / -1"))
+    }
+
+    @Test fun `regular administrators receive only a self scope collector workflow`() {
+        val dashboard = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/html/dashboard-admin.html"))
+        val frontend = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/js/dashboard.js"))
+        val service = Files.readString(Path.of("src/main/kotlin/backend/services/MonitoringService.kt"))
+
+        assertTrue(dashboard.contains("id='adminSelfCollectorCard'"))
+        assertTrue(dashboard.contains("Download Device Collector"))
+        assertTrue(frontend.contains("['admin', 'it-admin'].includes(currentRole())"))
+        assertTrue(frontend.contains("body: JSON.stringify({ ...request, scope: 'SELF' })"))
+        assertTrue(frontend.contains("/api/monitoring/my-collectors"))
+        assertTrue(frontend.contains("item.state === 'REVOKED'"))
+        assertTrue(service.contains("val canUseLanScope = role == UserRole.SUPERADMIN"))
+        assertTrue(service.contains("if (canUseLanScope) requestedScope else \"SELF\""))
+        assertTrue(service.contains("if (role == UserRole.SUPERADMIN) collectors() else collectorsForUser(userId)"))
     }
 
     @Test fun `ollama bridge is explicit secure and only uses authenticated backend routes`() {
@@ -209,5 +306,17 @@ class FrontendSafetyContractTest {
         assertTrue(createTicket.contains("window.aitsmFetchJson('/api/ai/ticket-insights'"))
         assertTrue(createTicket.contains("window.aitsmFetchJson('/api/tickets'"))
         assertFalse(createTicket.contains("headers: authHeaders()"))
+    }
+
+    @Test fun `admin analytics export uses protected download workflow`() {
+        val dashboard = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/html/dashboard-admin.html"))
+        val frontend = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/js/dashboard.js"))
+
+        assertTrue(dashboard.contains("id='exportAnalyticsBtn'"))
+        assertTrue(dashboard.contains("Export analytics CSV"))
+        assertTrue(frontend.contains("obtainReauthToken('sensitive-export')"))
+        assertTrue(frontend.contains("'X-Reauth-Token': reauthToken"))
+        assertTrue(frontend.contains("consumeCachedReauth('sensitive-export')"))
+        assertTrue(frontend.contains("/api/analytics/export"))
     }
 }

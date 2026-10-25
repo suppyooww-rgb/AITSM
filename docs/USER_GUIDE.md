@@ -1,4 +1,4 @@
-# AITSMSystem User Guide
+# AITSM User Guide
 
 This guide explains how to use the system as an end-user or admin.
 
@@ -71,6 +71,7 @@ Open `/security` to enroll or manage MFA, regenerate one-time recovery codes aft
 
 ### 3.5 Analytics
 - View ticket trends and system health insights.
+- Select **Export analytics CSV** on the Admin dashboard, reauthenticate, and download the current ticket analytics dataset. The export includes ticket classification, status, assignment, timestamps, and SLA risk fields, but excludes descriptions, requester credentials, and authentication data.
 
 ### 3.6 SLA
 - View configured SLA policies.
@@ -95,6 +96,8 @@ The **Settings → Local AI Bridge** card lets administrators connect a company-
 The bridge requires no inbound internet access. It polls authenticated, short-lived jobs over HTTPS and calls Ollama only on localhost. End-user `SELF` collectors are not eligible to process AI jobs.
 
 SLA timers, breach handling, and deterministic risk scoring do not depend on Ollama and remain available while the AI Bridge is unavailable.
+
+Collector versions are checked against the latest approved and minimum supported releases. Use **Update / Repair** when the portal reports an available or required update. Windows x64 is the supported launch platform; see `docs/COLLECTOR_SUPPORT_POLICY.md` for the Linux and macOS feasibility decision.
 
 ---
 

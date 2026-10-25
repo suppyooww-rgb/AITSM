@@ -41,6 +41,7 @@
             <p class='section-subtitle'>Monthly and weekly movement of active and resolved tickets.</p>
           </div>
           <div class='inline-actions dashboard-trend-controls'>
+            <button id='exportAnalyticsBtn' class='btn btn-ghost' type='button'>Export analytics CSV</button>
             <select id='trendViewSelect' aria-label='Ticket trend view'>
               <option value='monthly'>Monthly</option>
               <option value='weekly'>Weekly</option>
@@ -62,6 +63,7 @@
         </div>
         <div id='ticketTrendChart' class='chart-placeholder admin-chart'></div>
         <div id='ticketTrendDetails' class='small' style='margin-top:12px'></div>
+        <p id='analyticsExportStatus' class='small' role='status'></p>
     </section>
 
     <section class='card' style='margin-top:16px'>

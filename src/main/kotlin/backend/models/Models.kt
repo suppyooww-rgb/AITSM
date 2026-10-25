@@ -271,7 +271,11 @@ data class HostTelemetryDto(
     val lastReportedError: String? = null, val consecutiveFailures: Int = 0,
     val aiBridgeEnabled: Boolean = false, val aiBridgeAvailable: Boolean = false,
     val aiBridgeLastSeenAt: String? = null, val aiBridgeModel: String? = null,
-    val aiBridgeLastError: String? = null
+    val aiBridgeLastError: String? = null,
+    val latestAgentVersion: String = "1.3.1",
+    val minimumSupportedAgentVersion: String = "1.3.0",
+    val versionStatus: String = "UNKNOWN",
+    val updateRequired: Boolean = false
 )
 @Serializable data class CollectorDeviceReport(
     val deviceKey: String, val hostname: String, val ipAddress: String, val macAddress: String? = null,

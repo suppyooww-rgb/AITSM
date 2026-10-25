@@ -307,4 +307,16 @@ class FrontendSafetyContractTest {
         assertTrue(createTicket.contains("window.aitsmFetchJson('/api/tickets'"))
         assertFalse(createTicket.contains("headers: authHeaders()"))
     }
+
+    @Test fun `admin analytics export uses protected download workflow`() {
+        val dashboard = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/html/dashboard-admin.html"))
+        val frontend = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/js/dashboard.js"))
+
+        assertTrue(dashboard.contains("id='exportAnalyticsBtn'"))
+        assertTrue(dashboard.contains("Export analytics CSV"))
+        assertTrue(frontend.contains("obtainReauthToken('sensitive-export')"))
+        assertTrue(frontend.contains("'X-Reauth-Token': reauthToken"))
+        assertTrue(frontend.contains("consumeCachedReauth('sensitive-export')"))
+        assertTrue(frontend.contains("/api/analytics/export"))
+    }
 }

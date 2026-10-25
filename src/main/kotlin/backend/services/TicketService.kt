@@ -49,6 +49,20 @@ class TicketService(
     fun list(userId: Int?, admin: Boolean, limit: Int, offset: Long) = repository.list(userId, admin, limit, offset).let {
         it.copy(items = enrichRisk(it.items))
     }
+
+    fun exportAnalyticsCsv(actorId: Int): String {
+        val pageSize = 500
+        val tickets = mutableListOf<Ticket>()
+        var offset = 0L
+        do {
+            val page = repository.list(null, true, pageSize, offset)
+            tickets += page.items
+            offset += page.items.size
+        } while (page.items.isNotEmpty() && offset < page.total)
+        val enriched = enrichRisk(tickets)
+        audit.log(actorId, "Exported ${enriched.size} ticket analytics records", "analytics")
+        return analyticsCsv(enriched)
+    }
     fun get(id: Int): Ticket? = repository.get(id)?.let { enrichRisk(listOf(it)).first() }
     fun history(id: Int) = repository.history(id)
     fun attachments(id: Int, actorId: Int, role: UserRole) = authorizedTicket(id, actorId, role).let { repository.attachments(id) }
@@ -462,4 +476,27 @@ class TicketService(
 
     private fun average(values: List<Long>): Double? = if (values.isEmpty()) null else
         (values.average().toBigDecimal()).setScale(1, RoundingMode.HALF_UP).toDouble()
+}
+
+internal fun analyticsCsv(tickets: List<Ticket>): String {
+    val header = listOf(
+        "Ticket ID", "Title", "Category", "Priority", "Status", "Assigned To", "Created At", "Updated At",
+        "SLA Risk Level", "SLA Risk Score", "Response SLA State", "Resolution SLA State", "Overdue"
+    )
+    val rows = tickets.sortedBy { it.id }.map { ticket ->
+        listOf(
+            ticket.id.toString(), ticket.title, ticket.category, ticket.priority, ticket.status.name,
+            ticket.assignedTo.orEmpty(), ticket.createdAt, ticket.updatedAt, ticket.slaRiskLevel,
+            ticket.slaRiskScore.toString(), ticket.slaResponseState, ticket.slaResolutionState, ticket.overdue.toString()
+        )
+    }
+    return (listOf(header) + rows).joinToString("\r\n", postfix = "\r\n") { row ->
+        row.joinToString(",") { analyticsCsvCell(it) }
+    }
+}
+
+private fun analyticsCsvCell(value: String): String {
+    val singleLine = value.replace('\u0000', ' ').replace("\r\n", " ").replace('\r', ' ').replace('\n', ' ')
+    val protected = if (singleLine.trimStart().firstOrNull() in setOf('=', '+', '-', '@')) "'$singleLine" else singleLine
+    return "\"${protected.replace("\"", "\"\"")}\""
 }

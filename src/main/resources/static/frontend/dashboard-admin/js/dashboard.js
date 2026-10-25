@@ -171,12 +171,12 @@ async function loadAdminSelfCollectors() {
         <strong>${escapeHtml(item.name)}</strong>
         <div class='small'>${escapeHtml(item.state)} · ${escapeHtml(formatDateTime(item.lastSeenAt))}</div>
         <div class='small'>${escapeHtml(item.statusReason || '')}</div>
-        <div class='small'>Agent ${escapeHtml(item.agentVersion || 'legacy')} · Failures ${Number(item.consecutiveFailures || 0)}</div>
+        <div class='small'>Agent ${escapeHtml(item.agentVersion || 'legacy')} · ${escapeHtml(String(item.versionStatus || 'unknown').replaceAll('_', ' ').toLowerCase())} · Latest ${escapeHtml(item.latestAgentVersion || 'unknown')} · Failures ${Number(item.consecutiveFailures || 0)}</div>
       </div>
       <div class='inline-actions'>
         ${item.state === 'REVOKED'
           ? `<button class='btn btn-ghost' type='button' data-collector-action='remove' data-collector-id='${escapeHtml(item.collectorId)}'>Remove</button>`
-          : `<button class='btn btn-ghost' type='button' data-collector-action='diagnostics' data-collector-id='${escapeHtml(item.collectorId)}'>Diagnostics</button><button class='btn btn-ghost' type='button' data-collector-action='repair' data-collector-id='${escapeHtml(item.collectorId)}'>Repair</button><button class='btn btn-ghost' type='button' data-collector-action='remove' data-collector-id='${escapeHtml(item.collectorId)}'>Remove</button>`}
+          : `<button class='btn btn-ghost' type='button' data-collector-action='diagnostics' data-collector-id='${escapeHtml(item.collectorId)}'>Diagnostics</button><button class='btn btn-ghost' type='button' data-collector-action='repair' data-collector-id='${escapeHtml(item.collectorId)}'>${item.versionStatus === 'CURRENT' ? 'Repair' : 'Update / Repair'}</button><button class='btn btn-ghost' type='button' data-collector-action='remove' data-collector-id='${escapeHtml(item.collectorId)}'>Remove</button>`}
       </div>
     </div>`).join('') : `<p class='small'>No SELF-scope collector installed for your Admin account.</p>`;
 }
@@ -844,6 +844,46 @@ async function loadAdminDashboard() {
   }
 }
 
+async function exportAnalyticsCsv() {
+  const button = document.getElementById('exportAnalyticsBtn');
+  const status = document.getElementById('analyticsExportStatus');
+  if (!button || !status) return;
+  button.disabled = true;
+  status.textContent = 'Preparing protected analytics export…';
+  status.className = 'small';
+  try {
+    const reauthToken = await obtainReauthToken('sensitive-export');
+    const response = await fetch('/api/analytics/export', {
+      method: 'GET',
+      headers: { ...authHeaders(), 'X-Reauth-Token': reauthToken },
+      cache: 'no-store'
+    });
+    consumeCachedReauth('sensitive-export');
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Analytics export failed');
+    }
+    const disposition = response.headers.get('content-disposition') || '';
+    const filename = disposition.match(/filename="([^"]+)"/i)?.[1] || `AITSM-analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    status.textContent = 'Analytics CSV downloaded.';
+    status.className = 'small text-success';
+  } catch (error) {
+    consumeCachedReauth('sensitive-export');
+    status.textContent = error.message || 'Unable to export analytics.';
+    status.className = 'small text-danger';
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function refreshDashboardFeed() {
   if (dashboardFeedRefreshInFlight || document.hidden) return;
   dashboardFeedRefreshInFlight = true;
@@ -897,6 +937,7 @@ document.addEventListener('DOMContentLoaded', () => {
   startDashboardTelemetryRefresh();
   startDashboardFeedRefresh();
   document.getElementById('refreshAdminOpsFeedBtn')?.addEventListener('click', refreshDashboardFeed);
+  document.getElementById('exportAnalyticsBtn')?.addEventListener('click', exportAnalyticsCsv);
 });
 
 document.addEventListener('visibilitychange', () => {

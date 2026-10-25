@@ -212,6 +212,28 @@ class FrontendSafetyContractTest {
         assertTrue(dashboard.contains("Resolved: ${'$'}{Number(resolvedSeries[0] || 0)}"))
     }
 
+    @Test fun `admin dashboard analytics remain available to regular administrators`() {
+        val dashboard = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/js/dashboard.js"))
+        val permissions = Files.readString(Path.of("src/main/kotlin/backend/security/AuthMiddleware.kt"))
+        assertTrue(permissions.contains("path.startsWith(\"/api/sla\") && method == HttpMethod.Get -> Permission.TICKET_READ_ALL"))
+        assertTrue(dashboard.contains("fetchJsonOrThrow('/api/sla/analytics').catch(() => null)"))
+        assertTrue(dashboard.contains("rawPriority.charAt(0).toUpperCase()"))
+        assertTrue(dashboard.contains("['AT', 'Active Tickets', activeCount"))
+        assertTrue(dashboard.contains("['IP', 'In Progress Tickets', inProgressCount"))
+        assertTrue(dashboard.contains("['In Progress Tickets', inProgressTickets"))
+    }
+
+    @Test fun `inventory is the single asset view and exposes department`() {
+        val application = Files.readString(Path.of("src/main/kotlin/Application.kt"))
+        val navigation = Files.readString(Path.of("src/main/resources/static/frontend/modules/sidebar/js/admin-shell.js"))
+        val inventory = Files.readString(Path.of("src/main/resources/static/frontend/inventory/html/inventory.html"))
+        assertFalse(navigation.contains("label: 'Asset Management'"))
+        assertTrue(application.contains("get(\"/assets\") { call.redirectKeepingQuery(\"/inventory\""))
+        assertTrue(inventory.contains("<th>Department</th>"))
+        assertFalse(inventory.contains("Status (A-Z)"))
+        assertFalse(inventory.contains("Status (Z-A)"))
+    }
+
     @Test fun `collector actions use a zoom friendly overflow menu`() {
         val settingsHtml = Files.readString(Path.of("src/main/resources/static/frontend/settings/html/settings.html"))
         val settingsScript = Files.readString(Path.of("src/main/resources/static/frontend/settings/js/settings.js"))
@@ -221,7 +243,8 @@ class FrontendSafetyContractTest {
         assertTrue(settingsHtml.contains("class='collector-table'"))
         assertTrue(settingsScript.contains("collectorActionMenu(item, index)"))
         assertTrue(settingsScript.contains("aria-haspopup='menu'"))
-        assertTrue(settingsScript.contains("archiveCollector"))
+        assertTrue(settingsScript.contains("removeCollector"))
+        assertTrue(settingsScript.contains("item.state !== 'REVOKED'"))
         assertTrue(settingsStyles.contains(".collector-table"))
         assertFalse(settingsStyles.contains("grid-column: 1 / -1"))
     }
@@ -236,6 +259,7 @@ class FrontendSafetyContractTest {
         assertTrue(frontend.contains("['admin', 'it-admin'].includes(currentRole())"))
         assertTrue(frontend.contains("body: JSON.stringify({ ...request, scope: 'SELF' })"))
         assertTrue(frontend.contains("/api/monitoring/my-collectors"))
+        assertTrue(frontend.contains("item.state === 'REVOKED'"))
         assertTrue(service.contains("val canUseLanScope = role == UserRole.SUPERADMIN"))
         assertTrue(service.contains("if (canUseLanScope) requestedScope else \"SELF\""))
         assertTrue(service.contains("if (role == UserRole.SUPERADMIN) collectors() else collectorsForUser(userId)"))

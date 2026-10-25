@@ -101,6 +101,8 @@ class MonitoringService(
     }
     fun revoke(rawId: String): Boolean = repository.revoke(UUID.fromString(rawId))
     fun archive(rawId: String): Boolean = repository.archive(UUID.fromString(rawId))
+    fun remove(rawId: String): Boolean = repository.remove(UUID.fromString(rawId))
+    fun removeOwned(rawId: String, userId: Int): Boolean = repository.removeOwned(UUID.fromString(rawId), userId)
     fun revokeOwned(rawId: String, userId: Int): Boolean = repository.revokeOwned(UUID.fromString(rawId), userId)
     fun devices() = visibleCollectorDevices(deduplicatedLiveDevices(repository.devices()))
     fun lanDevices(includeHistory: Boolean = false) = repository.lanDevices(includeHistory)

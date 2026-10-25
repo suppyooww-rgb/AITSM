@@ -38,7 +38,6 @@ function adminNavItems() {
     ]},
     { section: 'System', items: [
       ...(superAdmin ? [{ page: 'settings', href: '/settings', icon: 'settings', label: 'Settings' }] : []),
-      { page: 'assets', href: '/assets', icon: 'assets', label: 'Asset Management' },
       { page: 'user-management', href: '/user-management', icon: 'users', label: 'User Management' },
       { page: 'colleagues', href: '/colleagues', icon: 'users', label: 'Colleagues & Chat' }
     ]}

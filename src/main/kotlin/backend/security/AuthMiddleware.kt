@@ -212,6 +212,7 @@ private fun legacyAdminPermission(path: String, method: HttpMethod): Permission 
         if (method == HttpMethod.Get) Permission.ASSET_READ else Permission.ASSET_MANAGE
     path.startsWith("/api/knowledge") -> Permission.KNOWLEDGE_MANAGE
     path.startsWith("/api/analytics") -> Permission.TICKET_READ_ALL
+    path.startsWith("/api/sla") && method == HttpMethod.Get -> Permission.TICKET_READ_ALL
     path.startsWith("/api/profile-photo") -> Permission.USER_MANAGE
     path.startsWith("/api/users/admin") || path.endsWith("/role") -> Permission.ROLE_MANAGE
     path.startsWith("/api/users") -> if (method == HttpMethod.Get) Permission.USER_READ else Permission.USER_MANAGE

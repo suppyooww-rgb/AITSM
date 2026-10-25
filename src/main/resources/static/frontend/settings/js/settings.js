@@ -153,18 +153,15 @@ function toggleCollectorActionMenu(event, menuId) {
 function collectorActionMenu(item, index) {
   const id = JSON.stringify(item.collectorId);
   const menuId = `collectorActionMenu-${index}`;
-  const actions = [
-    `<button type='button' onclick='downloadCollectorDiagnostics(${id})'>Download diagnostics</button>`
-  ];
+  const actions = [];
+  if (item.state !== 'REVOKED') {
+    actions.push(`<button type='button' onclick='downloadCollectorDiagnostics(${id})'>Download diagnostics</button>`);
+  }
   if (item.scope === 'LAN' && item.state !== 'REVOKED') {
     actions.push(`<button type='button' onclick='setCollectorAiBridge(${id}, ${!item.aiBridgeEnabled})'>${item.aiBridgeEnabled ? 'Disable' : 'Enable'} AI Bridge</button>`);
   }
-  if (item.state !== 'REVOKED') {
-    actions.push(`<button type='button' onclick='repairCollector(${id})'>Download repair installer</button>`);
-    actions.push(`<button class='collector-menu-danger' type='button' onclick='revokeCollector(${id})'>Revoke collector</button>`);
-  } else {
-    actions.push(`<button class='collector-menu-danger' type='button' onclick='archiveCollector(${id})'>Remove from list</button>`);
-  }
+  if (item.state !== 'REVOKED') actions.push(`<button type='button' onclick='repairCollector(${id})'>Download repair installer</button>`);
+  actions.push(`<button class='collector-menu-danger' type='button' onclick='removeCollector(${id})'>Remove collector</button>`);
   return `<div class='row-action-wrap'>
     <button class='btn btn-ghost icon-btn collector-menu-trigger' type='button' onclick='toggleCollectorActionMenu(event, "${menuId}")' aria-haspopup='menu' aria-expanded='false' aria-controls='${menuId}' aria-label='Actions for ${aitsmEscapeHtml(item.name || 'collector')}' title='Collector actions'>•••</button>
     <div id='${menuId}' class='row-action-menu collector-action-menu hidden' role='menu'>${actions.join('')}</div>
@@ -233,24 +230,12 @@ async function setCollectorAiBridge(id, enabled) {
   } catch (error) { showAppAlert(error.message || 'Unable to update AI Bridge.'); }
 }
 
-async function revokeCollector(id) {
-  closeCollectorActionMenus();
-  if (!confirm('Revoke this collector? It will stop accepting reports immediately.')) return;
-  await fetchJsonOrThrow(`/api/monitoring/collectors/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  await loadCollectors();
-}
-
-async function archiveCollector(id) {
+async function removeCollector(id) {
   closeCollectorActionMenus();
   const item = collectorRecords.get(id);
-  if (!item || item.state !== 'REVOKED') return;
-  if (!confirm(`Remove ${item.name} from the active collector list? Historical records will be retained. This does not uninstall the Windows service.`)) return;
-  try {
-    await fetchJsonOrThrow(`/api/monitoring/collectors/${encodeURIComponent(id)}/archive`, { method: 'DELETE' });
-    await loadCollectors();
-  } catch (error) {
-    showAppAlert(error.message || 'Unable to remove the collector from the active list.');
-  }
+  if (!item || !confirm(`Remove ${item.name}? It will stop accepting reports immediately and disappear from this list. Historical records will be retained. This does not uninstall the Windows service.`)) return;
+  await fetchJsonOrThrow(`/api/monitoring/collectors/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await loadCollectors();
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

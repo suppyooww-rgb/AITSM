@@ -220,7 +220,7 @@ class FrontendSafetyContractTest {
         assertTrue(dashboard.contains("rawPriority.charAt(0).toUpperCase()"))
         assertTrue(dashboard.contains("['AT', 'Active Tickets', activeCount"))
         assertTrue(dashboard.contains("['IP', 'In Progress Tickets', inProgressCount"))
-        assertTrue(dashboard.contains("['In Progress Tickets', inProgressTickets"))
+        assertFalse(dashboard.contains("['In Progress Tickets', inProgressTickets"))
     }
 
     @Test fun `inventory is the single asset view and exposes department`() {

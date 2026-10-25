@@ -521,8 +521,6 @@ function renderOperationalReport() {
     return cpu >= 85 || memory >= 90;
   });
 
-  const inProgressTickets = tickets.filter((ticket) => normalizeTicketStatus(ticket.status) === 'in progress').length;
-
   const monthToken = dashboardState.trend.month === 'all'
     ? buildTrendData(tickets, { ...dashboardState.trend, view: 'monthly' }).effectiveMonth
     : dashboardState.trend.month;
@@ -543,7 +541,6 @@ function renderOperationalReport() {
     : '0%';
 
   const stats = [
-    ['In Progress Tickets', inProgressTickets, 'Tickets currently being handled'],
     ['Ticket Trend', resolutionRate, `${monthLabel(resolvedMonthToken)} resolution rate`],
     ['Operational Alerts', criticalAlerts.length, 'High CPU/memory devices'],
     ['Devices On LAN', Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0), 'Devices currently seen by LAN discovery']

@@ -52,11 +52,13 @@ class CollectorVersionPolicyTest {
 
     @Test fun `collector support policy is visible in portal contracts`() {
         val model = java.nio.file.Files.readString(java.nio.file.Path.of("src/main/kotlin/backend/models/Models.kt"))
+        val service = java.nio.file.Files.readString(java.nio.file.Path.of("src/main/kotlin/backend/services/CollectorVersionPolicy.kt"))
         val settings = java.nio.file.Files.readString(java.nio.file.Path.of("src/main/resources/static/frontend/settings/js/settings.js"))
-        val policy = java.nio.file.Files.readString(java.nio.file.Path.of("docs/COLLECTOR_SUPPORT_POLICY.md"))
         assertContains(model, "val versionStatus: String")
         assertContains(settings, "Update or repair collector")
-        assertContains(policy, "Windows remains the launch platform")
-        assertContains(policy, "Linux and macOS support is deferred")
+        assertContains(service, "COLLECTOR_LATEST_VERSION")
+        assertContains(service, "COLLECTOR_MINIMUM_VERSION")
+        assertContains(service, "UNSUPPORTED")
+        assertContains(service, "UPDATE_AVAILABLE")
     }
 }

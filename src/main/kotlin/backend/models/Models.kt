@@ -346,7 +346,10 @@ data class HostTelemetryDto(
     val telemetryState: String = if (telemetryAvailable) "AVAILABLE" else "UNAVAILABLE",
     val lastLanSeenAt: String? = lastSeen,
     val lastTelemetryAt: String? = null,
-    val collectorSiteId: String? = null
+    val collectorSiteId: String? = null,
+    val ownerUserId: Int? = null,
+    val ownerName: String? = null,
+    val registeredCollectorId: String? = null
 )
 
 @Serializable
@@ -365,7 +368,8 @@ data class HostTelemetryDto(
     val staleDevices: Int = 0,
     val offlineDevices: Int = 0,
     val offLanDevices: Int = 0,
-    val unknownDevices: Int = 0
+    val unknownDevices: Int = 0,
+    val discoveryError: String? = null
 )
 
 @Serializable

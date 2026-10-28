@@ -130,7 +130,7 @@ function updateMonitoringLiveStatus(state = 'idle', message) {
 
 function telemetryBadge(device) {
   const state = String(device.telemetryState || (device.telemetryAvailable ? 'AVAILABLE' : 'UNAVAILABLE')).toUpperCase();
-  const reportLabel = state === 'AVAILABLE' ? 'Reporting' : state === 'STALE' ? 'Stale' : state === 'OFFLINE' ? 'Offline' : 'No device collector';
+  const percentage = state === 'AVAILABLE' ? 100 : state === 'STALE' ? 50 : 0;
   const tone = state === 'AVAILABLE' ? 'resolved' : 'warning';
   const lastReport = device.lastTelemetryAt ? ` Last report: ${formatLastSeen(device.lastTelemetryAt)}.` : '';
   const explanation = state === 'AVAILABLE'
@@ -148,7 +148,7 @@ function telemetryBadge(device) {
         ? 'Start or repair the collector.'
         : 'Install the device collector.';
   const details = `${advice} ${explanation}${lastReport}`;
-  return `<div class='monitor-telemetry-health'><span class='badge ${tone} monitor-telemetry-badge'>${aitsmEscapeHtml(reportLabel)}</span><span class='monitor-info-icon' role='img' tabindex='0' aria-label='${aitsmEscapeHtml(details)}' title='${aitsmEscapeHtml(details)}'>i</span></div>`;
+  return `<div class='monitor-telemetry-health'><span class='badge ${tone} monitor-telemetry-badge'>${percentage}%</span><span class='monitor-info-icon' role='img' tabindex='0' aria-label='${aitsmEscapeHtml(details)}' title='${aitsmEscapeHtml(details)}'>i</span></div>`;
 }
 
 function lanPresenceLabel(device) {
@@ -175,7 +175,7 @@ function renderMonitorSummary(summary) {
     ['On LAN', summary?.onLanDevices ?? 0],
     ['Off LAN', summary?.offLanDevices ?? 0],
     ['Stale / Offline', Number(summary?.staleDevices ?? 0) + Number(summary?.offlineDevices ?? 0)],
-    ['Device reports', `${Number(summary?.telemetryAvailableDevices || 0)}/${discoverable}`],
+    ['Telemetry Coverage', `${Math.min(100, telemetryCoverage)}%`],
     ['LAN Collector', String(summary?.collectorState || 'NOT_ENROLLED').replaceAll('_', ' ')]
   ];
 
@@ -200,7 +200,7 @@ function renderMonitoringHealthPanel(summary, devices) {
     <div class='insight-grid monitor-health-grid'>
       <div class='insight-item'><div class='insight-label'>Collector health</div><div class='insight-value monitor-text-wrap'>${aitsmEscapeHtml(collectorState)}</div></div>
       <div class='insight-item'><div class='insight-label'>LAN scan</div><div class='insight-value'>${aitsmEscapeHtml(String(summary?.discoveryState || 'NEVER').replaceAll('_', ' '))}</div></div>
-      <div class='insight-item'><div class='insight-label'>Device reports</div><div class='insight-value'>${available}/${devices.length}</div><div class='small monitor-text-wrap'>${aitsmEscapeHtml(telemetryAdvice)}</div></div>
+      <div class='insight-item'><div class='insight-label'>Telemetry coverage</div><div class='insight-value'>${coverage}%</div><div class='small monitor-text-wrap'>${aitsmEscapeHtml(telemetryAdvice)}</div></div>
       <div class='insight-item'><div class='insight-label'>Last LAN report</div><div class='insight-value monitor-text-wrap monitor-updated-at'>${formatLastSeen(lastUpdate)}</div></div>
     </div>`;
 }
@@ -252,7 +252,7 @@ function renderMonitorTable(devices) {
   renderMonitorTableCount(visible.length, devices.length);
 
   if (!visible.length) {
-    renderTableEmptyState(rows, 9, devices.length ? 'No devices matched the current filters.' : 'No devices have been observed by an active LAN collector yet.');
+    renderTableEmptyState(rows, 7, devices.length ? 'No devices matched the current filters.' : 'No devices have been observed by an active LAN collector yet.');
     return;
   }
 
@@ -260,9 +260,7 @@ function renderMonitorTable(devices) {
     <td>${aitsmEscapeHtml(d.hostname || '-')}</td>
     <td title='${aitsmEscapeHtml(`Observed IPs: ${(d.observedIpAddresses || [d.ipAddress]).join(', ')}`)}'>${aitsmEscapeHtml(d.ipAddress || '-')}${(d.observedIpAddresses || []).length > 1 ? `<div class='small'>${d.observedIpAddresses.length} addresses observed</div>` : ''}</td>
     <td><span class='badge ${statusBadge(d.lanPresenceState === 'ON_LAN' ? 'online' : 'unreachable')}'>${aitsmEscapeHtml(lanPresenceLabel(d))}</span></td>
-    <td>${window.aitsmNetworkSpeedCell?.(d, 'downloadMbps') || 'Not tested'}</td>
-    <td>${window.aitsmNetworkSpeedCell?.(d, 'uploadMbps') || 'Not tested'}</td>
-    <td>${window.aitsmNetworkSpeedCell?.(d, 'latencyMs') || 'Not tested'}</td>
+    <td class='monitor-telemetry-cell'>${telemetryBadge(d)}</td>
     <td>${d.cpuUsagePercent != null ? `${Number(d.cpuUsagePercent).toFixed(1)}%` : '-'}</td>
     <td>${d.memoryUsagePercent != null ? `${Number(d.memoryUsagePercent).toFixed(1)}%` : '-'}</td>
     <td>${formatLastSeen(d.lastLanSeenAt || d.lastSeen)}</td>
@@ -313,7 +311,7 @@ async function loadMonitoring({ force = false, source = 'manual' } = {}) {
   monitoringRefreshInFlight = true;
   updateMonitoringLiveStatus('loading');
   const monitorRows = document.getElementById('monitorTableRows');
-  if (monitorRows) showTableSkeleton(monitorRows, { rowCount: 6, columnCount: 9 });
+  if (monitorRows) showTableSkeleton(monitorRows, { rowCount: 6, columnCount: 7 });
 
   try {
     const [summaryRes, devicesRes, peerIpsRes] = await Promise.all([
@@ -615,4 +613,3 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 window.addEventListener('beforeunload', stopMonitoringAutoRefresh);
-window.addEventListener('aitsm:network-results', () => renderMonitorTable(monitoringDevicesCache));

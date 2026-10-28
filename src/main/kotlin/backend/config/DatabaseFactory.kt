@@ -580,8 +580,7 @@ object DatabaseFactory {
                 AuditLogsTable,
                 AIConversationMessagesTable,
                 InventoryAssetsTable,
-                InventoryAssetSnapshotsTable,
-                backend.services.NetworkTestsTable
+                InventoryAssetSnapshotsTable
             )
             exec("""
                 UPDATE monitoring_devices

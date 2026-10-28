@@ -171,19 +171,19 @@ class FrontendSafetyContractTest {
         assertTrue(repository.contains("MonitoringLanObservationsTable"))
         assertTrue(repository.contains("collectorScope == \"LAN\""))
         assertTrue(monitoringHtml.contains("LAN Presence <span class='monitor-info-icon'"))
-        assertTrue(monitoringHtml.contains("<th>Download Mbps</th><th>Upload Mbps</th><th>Latency ms</th>"))
+        assertTrue(monitoringHtml.contains("Telemetry Health <span class='monitor-info-icon'"))
         assertFalse(monitoringHtml.contains("<th>Last Telemetry</th>"))
         assertTrue(monitoringScript.contains("lanPresenceState"))
         assertTrue(monitoringScript.contains("lastTelemetryAt"))
         assertTrue(monitoringScript.contains("Telemetry was received within the last two minutes."))
-        assertFalse(monitoringScript.contains("state === 'AVAILABLE' ? 100 : state === 'STALE' ? 50 : 0"))
+        assertTrue(monitoringScript.contains("state === 'AVAILABLE' ? 100 : state === 'STALE' ? 50 : 0"))
         assertTrue(monitoringScript.contains("No action needed."))
         assertTrue(monitoringScript.contains("Check the collector connection."))
         assertTrue(monitoringScript.contains("Start or repair the collector."))
         assertTrue(monitoringScript.contains("Install the device collector."))
-        assertTrue(monitoringScript.contains("aitsmNetworkSpeedCell"))
+        assertTrue(monitoringScript.contains("class='monitor-telemetry-cell'"))
         assertTrue(monitoringScript.contains("class='monitor-info-icon'"))
-        assertTrue(monitoringScript.contains("['Device reports'"))
+        assertTrue(monitoringScript.contains("['Telemetry Coverage', `${'$'}{Math.min(100, telemetryCoverage)}%`]"))
         assertTrue(monitoringScript.contains("Review the ${'$'}{missing}"))
         assertTrue(monitoringHtml.contains("Show 30-day history"))
         assertTrue(monitoringScript.contains("?history=true"))
@@ -197,13 +197,10 @@ class FrontendSafetyContractTest {
         assertFalse(inventoryHtml.contains("<th>Processor</th>"))
     }
 
-    @Test fun `dashboard and monitoring share measured network performance component`() {
-        val dashboard = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/html/dashboard-admin.html"))
-        val monitoring = Files.readString(Path.of("src/main/resources/static/frontend/monitoring/html/monitoring.html"))
-        for (page in listOf(dashboard, monitoring)) {
-            assertTrue(page.contains("data-network-performance"))
-            assertTrue(page.contains("/modules/common/js/network-performance.js"))
-        }
+    @Test fun `telemetry coverage treats higher values as healthy`() {
+        val dashboard = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/js/dashboard.js"))
+        assertTrue(dashboard.contains("label: 'Telemetry Coverage', value: telemetryCoverage, target: 'Above 70% of devices on LAN', higherIsBetter: true"))
+        assertTrue(dashboard.contains("metric.value >= 70 ? { tone: 'resolved', label: 'Stable' }"))
     }
 
     @Test fun `ticket trend remains visible when only one period has data`() {

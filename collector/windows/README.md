@@ -51,12 +51,6 @@ Then revoke the matching portal entry. The encrypted credential and local status
 
 ## Network and troubleshooting
 
-### On demand connection speed tests
-
-Collector 1.4.0 supports **Run speed test** in the dashboard and LAN Monitoring. Tests measure a 1 MiB download and 1 MiB upload to the configured AITSM portal and the median of three HTTPS round trips. They run only on request, at most once per collector every five minutes, in a separate loop from host telemetry and discovery. They do not contact third party test services. These small-sample connection estimates include application and network overhead; they are not an ISP line-capacity benchmark. Results retain a server timestamp and are displayed in Mbps and milliseconds. A LAN-discovered peer needs its own collector for its own connection result; the LAN collector's speed must not be copied onto peer devices.
-
-The portal must apply migration V026 before serving the new network-test routes. Existing collectors continue normal telemetry; update them to 1.4.0 to run a speed test. An offline collector's request expires after five minutes.
-
 - Allow outbound TCP 443 to the AITSM hostname. No inbound port or router change is required.
 - For AI, allow the Windows service to reach local `127.0.0.1:11434`; do not publish that port to the LAN or internet.
 - Company/LAN discovery is restricted to the private CIDRs configured in **Settings → Asset Detection Configuration**.

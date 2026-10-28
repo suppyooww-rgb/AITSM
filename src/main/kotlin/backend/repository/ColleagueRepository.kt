@@ -19,6 +19,7 @@ import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 class ColleagueRepository {
     fun user(userId: Int): Colleague? = transaction {
@@ -122,7 +123,7 @@ class ColleagueRepository {
     }
 
     fun sendMessage(senderId: Int, recipientId: Int, body: String): DirectMessage = transaction {
-        val id = DirectMessagesTable.insert { it[DirectMessagesTable.senderId] = senderId; it[DirectMessagesTable.recipientId] = recipientId; it[DirectMessagesTable.body] = body; it[sentAt] = LocalDateTime.now(); it[readAt] = null }[DirectMessagesTable.id]
+        val id = DirectMessagesTable.insert { it[DirectMessagesTable.senderId] = senderId; it[DirectMessagesTable.recipientId] = recipientId; it[DirectMessagesTable.body] = body; it[sentAt] = LocalDateTime.now(ZoneOffset.UTC); it[readAt] = null }[DirectMessagesTable.id]
         DirectMessagesTable.selectAll().where { DirectMessagesTable.id eq id }.single().let(::toMessage)
     }
 
@@ -131,10 +132,10 @@ class ColleagueRepository {
     }
 
     fun markRead(recipientId: Int, senderId: Int): Int = transaction {
-        DirectMessagesTable.update({ (DirectMessagesTable.recipientId eq recipientId) and (DirectMessagesTable.senderId eq senderId) and DirectMessagesTable.readAt.isNull() }) { it[readAt] = LocalDateTime.now() }
+        DirectMessagesTable.update({ (DirectMessagesTable.recipientId eq recipientId) and (DirectMessagesTable.senderId eq senderId) and DirectMessagesTable.readAt.isNull() }) { it[readAt] = LocalDateTime.now(ZoneOffset.UTC) }
     }
 
     private fun toRequest(row: ResultRow) = ColleagueRequest(row[ColleagueRequestsTable.id], row[ColleagueRequestsTable.senderId], row[ColleagueRequestsTable.recipientId], ColleagueRequestStatus.valueOf(row[ColleagueRequestsTable.status]), row[ColleagueRequestsTable.createdAt].toString(), row[ColleagueRequestsTable.respondedAt]?.toString())
-    private fun toMessage(row: ResultRow) = DirectMessage(row[DirectMessagesTable.id], row[DirectMessagesTable.senderId], row[DirectMessagesTable.recipientId], row[DirectMessagesTable.body], row[DirectMessagesTable.sentAt].toString(), row[DirectMessagesTable.readAt]?.toString())
+    private fun toMessage(row: ResultRow) = DirectMessage(row[DirectMessagesTable.id], row[DirectMessagesTable.senderId], row[DirectMessagesTable.recipientId], row[DirectMessagesTable.body], row[DirectMessagesTable.sentAt].toInstant(ZoneOffset.UTC).toString(), row[DirectMessagesTable.readAt]?.toInstant(ZoneOffset.UTC)?.toString())
     private fun toColleague(row: ResultRow) = Colleague(row[UsersTable.id], row[UsersTable.fullName], row[UsersTable.email], row[UsersTable.department], UserRole.from(row[UsersTable.role]), row[UsersTable.profilePhotoUrl])
 }

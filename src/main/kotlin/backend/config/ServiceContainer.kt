@@ -67,6 +67,7 @@ class ServiceContainer(application: Application) {
     val ticketService = TicketService(ticketRepo, auditRepo, notificationService, userRepo, knowledgeCandidateRepo)
     val inventoryService = InventoryService(inventoryQueries, assetDetectionService)
     val monitoringService = MonitoringService(monitoringRepository, assetDetectionService, inventoryService)
+    val networkTestService = backend.services.NetworkTestService(monitoringRepository)
     val aiService = AIService()
     val aiConfigService = AIConfigService(application.environment.config, systemSettingsQueries) { model ->
         aiBridgeRepository.status(model).available

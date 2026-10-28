@@ -13,6 +13,7 @@ import backend.routes.deviceRoutes
 import backend.routes.colleagueRoutes
 import backend.routes.knowledgeRoutes
 import backend.routes.monitoringRoutes
+import backend.routes.networkTestRoutes
 import backend.routes.profilePhotoRoutes
 import backend.routes.notificationRoutes
 import backend.routes.inventoryRoutes
@@ -237,6 +238,7 @@ fun Application.module() {
         profilePhotoRoutes(container.profilePhotoService)
         ticketRoutes(container.ticketService, container.slaAutomationService)
         monitoringRoutes(container.monitoringService, container.deviceRepo, container.assetDetectionService, container.inventoryService)
+        networkTestRoutes(container.networkTestService)
         analyticsRoutes(container.ticketService, container.monitoringService, container.aiService, container.reauthenticationService)
         deviceRoutes(container.deviceRepo, container.userRepo, container.monitoringService, container.assetDetectionService, container.inventoryService)
         notificationRoutes(container.notificationService)

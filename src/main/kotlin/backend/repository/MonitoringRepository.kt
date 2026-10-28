@@ -501,7 +501,8 @@ class MonitoringRepository(private val clock: Clock = Clock.systemUTC()) {
                     telemetryState = telemetryState,
                     lastLanSeenAt = iso(lastLanSeen),
                     lastTelemetryAt = iso(telemetryReceived),
-                    collectorSiteId = collector[MonitoringCollectorsTable.siteId]
+                    collectorSiteId = collector[MonitoringCollectorsTable.siteId],
+                    telemetryCollectorId = agent?.get(MonitoringDevicesTable.collectorId)?.toString()
                 )
             }
         selectLanObservations(observations, includeHistory, instantNow)

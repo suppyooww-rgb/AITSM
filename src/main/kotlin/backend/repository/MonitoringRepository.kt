@@ -226,7 +226,7 @@ class MonitoringRepository(private val clock: Clock = Clock.systemUTC()) {
         }) { it[revokedAt] = now() } > 0
     }
 
-    fun saveReport(collectorId: UUID, collectorScope: String, report: CollectorReportRequest, measurement: Instant): Pair<Instant, Int> = transaction {
+    fun saveReport(collectorId: UUID, collectorScope: String, report: CollectorReportRequest, measurement: Instant, observationIps: Set<String> = report.devices.map { it.ipAddress }.toSet()): Pair<Instant, Int> = transaction {
         val received = now()
         MonitoringCollectorsTable.update({ (MonitoringCollectorsTable.id eq collectorId) and MonitoringCollectorsTable.revokedAt.isNull() }) {
             it[lastSeenAt] = received
@@ -236,7 +236,7 @@ class MonitoringRepository(private val clock: Clock = Clock.systemUTC()) {
             it[consecutiveFailures] = report.consecutiveFailures.coerceIn(0, 100_000)
         }
         report.devices.forEach { device ->
-            if (collectorScope == "LAN") upsertLanObservation(collectorId, device, measurement, received)
+            if (collectorScope == "LAN" && device.ipAddress in observationIps) upsertLanObservation(collectorId, device, measurement, received)
             if (device.telemetryAvailable) upsertDevice(collectorId, device, measurement, received)
         }
         if (collectorScope == "LAN") {
@@ -478,7 +478,7 @@ class MonitoringRepository(private val clock: Clock = Clock.systemUTC()) {
                 val telemetryIsLive = telemetryState == "AVAILABLE"
                 LanDeviceDto(
                     id = "lan-observation-${row[MonitoringLanObservationsTable.id]}",
-                    hostname = row[MonitoringLanObservationsTable.hostname],
+                    hostname = agent?.get(MonitoringDevicesTable.hostname)?.takeIf { it.isNotBlank() } ?: row[MonitoringLanObservationsTable.hostname],
                     ipAddress = row[MonitoringLanObservationsTable.ipAddress],
                     reachable = lanPresence == "ON_LAN",
                     telemetryAvailable = telemetryIsLive,
@@ -528,7 +528,6 @@ class MonitoringRepository(private val clock: Clock = Clock.systemUTC()) {
     }
 
     fun nextCommand(collectorId: UUID, cidrs: List<String>): DiscoveryCommand? = transaction {
-        MonitoringCollectorsTable.update({ MonitoringCollectorsTable.id eq collectorId }) { it[lastSeenAt] = now() }
         val row = DiscoveryRequestsTable.selectAll().where {
             (DiscoveryRequestsTable.collectorId eq collectorId) and (DiscoveryRequestsTable.status eq "PENDING")
         }.orderBy(DiscoveryRequestsTable.requestedAt).limit(1).singleOrNull() ?: return@transaction null

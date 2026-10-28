@@ -154,11 +154,13 @@ class MonitoringService(
         require(report.consecutiveFailures in 0..100_000) { "Collector failure count is invalid." }
         val acceptedDevices = if (collector.scope == "LAN") {
             val cidrs = assetDetectionService.getConfiguredPrivateCidrs()
-            report.devices.filter { isUsableLanHost(it.ipAddress, cidrs) }
+            report.devices.filter { acceptsCollectorReading(it, cidrs) }
         } else report.devices
         acceptedDevices.forEach { validateDevice(it, collector.scope) }
+        require(acceptedDevices.count(::isOwnCollectorHost) <= 1) { "A collector may report at most one host with telemetry." }
         val acceptedReport = report.copy(devices = acceptedDevices)
-        val (receivedAt, count) = repository.saveReport(collector.id, collector.scope, acceptedReport, measuredAt)
+        val observationIps = acceptedDevices.filter { isUsableLanHost(it.ipAddress, assetDetectionService.getConfiguredPrivateCidrs()) }.map { it.ipAddress }.toSet()
+        val (receivedAt, count) = repository.saveReport(collector.id, collector.scope, acceptedReport, measuredAt, observationIps)
         acceptedDevices.filter { it.telemetryAvailable && it.inventory != null }.forEach { device ->
             inventoryService.upsertDetectedAsset(device.toInventoryUpsert(), saveSnapshot = false)
         }
@@ -169,7 +171,7 @@ class MonitoringService(
         require(device.deviceKey.isNotBlank() && device.deviceKey.length <= 200) { "Device key is invalid." }
         require(device.hostname.isNotBlank() && device.hostname.length <= 200) { "Hostname is invalid." }
         require(device.ipAddress.length <= 45 && isLiteralIp(device.ipAddress) &&
-            (if (scope == "SELF") isPrivateIp(device.ipAddress) else assetDetectionService.matchesConfigured(device.ipAddress))) {
+            (if (scope == "SELF" || isOwnCollectorHost(device)) isPrivateIp(device.ipAddress) else assetDetectionService.matchesConfigured(device.ipAddress))) {
             "Device IP must be inside an authorized private range."
         }
         require((device.macAddress?.length ?: 0) <= 32 && (device.osDetails?.length ?: 0) <= 300) { "Device metadata is too long." }
@@ -213,6 +215,13 @@ class MonitoringService(
             ((bytes[0].toInt() and 0xff) == 192 && (bytes[1].toInt() and 0xff) == 168))
     }.getOrDefault(false)
 }
+
+internal fun isOwnCollectorHost(device: CollectorDeviceReport): Boolean =
+    device.deviceKey.startsWith("host:") && device.telemetryAvailable && device.inventory != null
+
+internal fun acceptsCollectorReading(device: CollectorDeviceReport, cidrs: List<String>): Boolean =
+    isUsableLanHost(device.ipAddress, cidrs) || (isOwnCollectorHost(device) &&
+        isUsableLanHost(device.ipAddress, listOf("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")))
 
 internal fun isUsableLanHost(value: String, cidrs: List<String>): Boolean = runCatching {
     val octets = value.split('.').map(String::toInt)

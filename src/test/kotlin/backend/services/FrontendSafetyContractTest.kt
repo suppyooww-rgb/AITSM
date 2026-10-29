@@ -183,7 +183,7 @@ class FrontendSafetyContractTest {
         assertTrue(monitoringScript.contains("Install the device collector."))
         assertTrue(monitoringScript.contains("class='monitor-telemetry-cell'"))
         assertTrue(monitoringScript.contains("class='monitor-info-icon'"))
-        assertTrue(monitoringScript.contains("['Telemetry Coverage', `${'$'}{Math.min(100, telemetryCoverage)}%`]"))
+        assertTrue(monitoringScript.contains("['Telemetry Coverage', telemetryCoverage == null ? 'Unavailable' : `${'$'}{telemetryCoverage}%`]"))
         assertTrue(monitoringScript.contains("Review the ${'$'}{missing}"))
         assertTrue(monitoringHtml.contains("Show 30-day history"))
         assertTrue(monitoringScript.contains("?history=true"))

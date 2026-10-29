@@ -51,7 +51,7 @@
       <div class='card-head'>
         <div>
           <h3 class='section-title'>Device Inventory</h3>
-          <p class='section-subtitle'>LAN observations only. Remote SELF collectors remain available in Inventory.</p>
+          <p class='section-subtitle'>Registered collector devices and LAN observations. Collector connectivity and LAN presence are tracked independently.</p>
         </div>
         <div class='inline-actions'>
           <button id='showLanHistoryBtn' class='btn btn-ghost' type='button'>Show 30-day history</button>
@@ -61,7 +61,7 @@
       <div class='form-grid' style='margin-bottom:12px'>
         <div class='form-group'>
           <label for='monitorSearchInput'>Search</label>
-          <input id='monitorSearchInput' type='search' placeholder='Device name or IP address'>
+          <input id='monitorSearchInput' type='search' placeholder='Device name, IP address, or enrolled user'>
         </div>
         <div class='form-group'>
           <label for='monitorReachabilityFilter'>LAN presence</label>
@@ -93,5 +93,5 @@
     </section>
   </main>
 </div>
-<script src='/modules/sidebar/js/admin-shell.js'></script><script src='/modules/common/js/app.js'></script><script src='/modules/common/js/table-skeleton.js'></script><script src='/monitoring/js/monitoring.js?v=compact-lan-information-v1'></script>
+<script src='/modules/sidebar/js/admin-shell.js'></script><script src='/modules/common/js/app.js'></script><script src='/modules/common/js/table-skeleton.js'></script><script src='/monitoring/js/monitoring.js?v=registered-collector-devices-v1'></script>
 </body></html>

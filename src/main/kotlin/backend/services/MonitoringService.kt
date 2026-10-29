@@ -121,7 +121,7 @@ class MonitoringService(
         val discovery = repository.latestDiscovery()
         return MonitoringSummaryDto(
             totalDiscovered = devices.size, monitoredDevices = devices.count { it.lanPresenceState == "ON_LAN" },
-            telemetryAvailableDevices = devices.count { it.telemetryAvailable && !it.stale }, hostTelemetry = null,
+            telemetryAvailableDevices = devices.count { it.lanPresenceState == "ON_LAN" && it.telemetryAvailable && !it.stale }, hostTelemetry = null,
             timestamp = devices.mapNotNull { it.receivedAt }.maxOrNull(), collectorState = newest?.state ?: "NOT_ENROLLED",
             collectorLastSeenAt = newest?.lastSeenAt, discoveryState = discovery.first,
             discoveryCompletedAt = discovery.second, serviceHealthCheckedAt = clock.instant().toString(),
@@ -129,7 +129,8 @@ class MonitoringService(
             staleDevices = devices.count { it.lanPresenceState == "STALE" },
             offlineDevices = devices.count { it.lanPresenceState == "OFFLINE" },
             offLanDevices = devices.count { it.lanPresenceState == "OFF_LAN" },
-            unknownDevices = devices.count { it.lanPresenceState == "UNKNOWN" }
+            unknownDevices = devices.count { it.lanPresenceState == "UNKNOWN" },
+            discoveryError = discovery.third
         )
     }
 

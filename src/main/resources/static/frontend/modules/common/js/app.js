@@ -45,6 +45,31 @@ function aitsmEscapeHtml(value) {
   }[char]));
 }
 
+function aitsmParseChatTimestamp(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const timestamp = value.trim();
+  // Earlier chat responses omitted the UTC offset from server timestamps.
+  const utcTimestamp = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(timestamp) ? timestamp : `${timestamp}Z`;
+  const date = new Date(utcTimestamp);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function aitsmFormatChatTime(value) {
+  const date = aitsmParseChatTimestamp(value);
+  return date ? date.toLocaleTimeString('en-US', {
+    timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: true
+  }) : '';
+}
+
+function aitsmFormatConversationTime(value, now = new Date()) {
+  const date = aitsmParseChatTimestamp(value);
+  if (!date) return '';
+  const dayOptions = { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' };
+  return date.toLocaleDateString('en-US', dayOptions) === now.toLocaleDateString('en-US', dayOptions)
+    ? aitsmFormatChatTime(value)
+    : date.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' });
+}
+
 function normalizeRole(role) {
   return String(role || '').toLowerCase().replaceAll('_', '-');
 }
@@ -702,7 +727,7 @@ function colleagueChatUrl(id) {
 function ensureChatDrawer() {
   if (!currentRole() || window.AITSMChat || document.querySelector('script[data-aitsm-chat]')) return;
   const script = document.createElement('script');
-  script.src = '/modules/common/js/chat-drawer.js?v=chat-enter-v1';
+  script.src = '/modules/common/js/chat-drawer.js?v=ph-time-v1';
   script.dataset.aitsmChat = 'true';
   script.addEventListener('load', () => window.AITSMChat?.mount());
   document.body.appendChild(script);

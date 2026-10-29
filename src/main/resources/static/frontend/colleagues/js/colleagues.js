@@ -61,9 +61,7 @@
   }
 
   function formatTime(value) {
-    if (!value) return '';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return aitsmFormatChatTime(value);
   }
 
   function renderPersonCard(result) {

@@ -183,7 +183,7 @@ class FrontendSafetyContractTest {
         assertTrue(monitoringScript.contains("Install the device collector."))
         assertTrue(monitoringScript.contains("class='monitor-telemetry-cell'"))
         assertTrue(monitoringScript.contains("class='monitor-info-icon'"))
-        assertTrue(monitoringScript.contains("['Telemetry Coverage', `${'$'}{Math.min(100, telemetryCoverage)}%`]"))
+        assertTrue(monitoringScript.contains("['Telemetry Coverage', telemetryCoverage == null ? 'Unavailable' : `${'$'}{telemetryCoverage}%`]"))
         assertTrue(monitoringScript.contains("Review the ${'$'}{missing}"))
         assertTrue(monitoringHtml.contains("Show 30-day history"))
         assertTrue(monitoringScript.contains("?history=true"))
@@ -199,7 +199,7 @@ class FrontendSafetyContractTest {
 
     @Test fun `telemetry coverage treats higher values as healthy`() {
         val dashboard = Files.readString(Path.of("src/main/resources/static/frontend/dashboard-admin/js/dashboard.js"))
-        assertTrue(dashboard.contains("label: 'Telemetry Coverage', value: telemetryCoverage, target: 'Above 70%', higherIsBetter: true"))
+        assertTrue(dashboard.contains("label: 'Telemetry Coverage', value: telemetryCoverage, target: 'Above 70% of devices on LAN', higherIsBetter: true"))
         assertTrue(dashboard.contains("metric.value >= 70 ? { tone: 'resolved', label: 'Stable' }"))
     }
 

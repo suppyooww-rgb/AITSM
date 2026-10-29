@@ -2,6 +2,7 @@ const dashboardState = {
   tickets: [],
   monitoringSummary: null,
   lanDevices: [],
+  agentDevices: null,
   notifications: [],
   inventoryStats: null,
   slaAnalytics: null,
@@ -554,6 +555,17 @@ function renderOperationalReport() {
     </article>`).join('');
 }
 
+function averageLiveTelemetry(devices, key, now = Date.now()) {
+  const values = (Array.isArray(devices) ? devices : [])
+    .filter(device => {
+      const received = Date.parse(device.receivedAt || device.lastSeen || '');
+      return device.telemetryAvailable && !device.stale && Number.isFinite(received) && now - received >= -30000 && now - received <= 120000;
+    })
+    .map(device => device[key])
+    .filter(value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
 function renderSystemPerformance() {
   const summaryHost = document.getElementById('systemPerformanceSummary');
   const chartHost = document.getElementById('systemPerformanceChart');
@@ -561,10 +573,7 @@ function renderSystemPerformance() {
 
   const tickets = dashboardState.tickets;
   const monitorSummary = dashboardState.monitoringSummary || {};
-  const telemetryDevices = dashboardState.lanDevices.filter((device) => device.telemetryAvailable && !device.stale);
-  const average = (key) => telemetryDevices.length
-    ? telemetryDevices.reduce((sum, device) => sum + Number(device[key] || 0), 0) / telemetryDevices.length
-    : 0;
+  const average = key => averageLiveTelemetry(dashboardState.agentDevices, key);
 
   const activeTickets = tickets.filter((ticket) => {
     const status = normalizeTicketStatus(ticket.status);
@@ -572,24 +581,24 @@ function renderSystemPerformance() {
   }).length;
 
   const totalTickets = Math.max(1, tickets.length);
-  const discoverable = Math.max(1, Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0));
-  const telemetryCoverage = (Number(monitorSummary.telemetryAvailableDevices || 0) / discoverable) * 100;
+  const discoverable = Number(monitorSummary.onLanDevices ?? monitorSummary.monitoredDevices ?? 0);
+  const telemetryCoverage = discoverable > 0 ? (dashboardState.lanDevices.filter(d => d.lanPresenceState === 'ON_LAN' && d.telemetryAvailable && !d.stale).length / discoverable) * 100 : null;
   const ticketLoad = Math.min(100, (activeTickets / totalTickets) * 100);
 
   const metrics = [
     { label: 'Device CPU Average', value: average('cpuUsagePercent'), target: 'Reporting devices only', higherIsBetter: false },
     { label: 'Device Memory Average', value: average('memoryUsagePercent'), target: 'Reporting devices only', higherIsBetter: false },
-    { label: 'Telemetry Coverage', value: telemetryCoverage, target: 'Above 70%', higherIsBetter: true },
+    { label: 'Telemetry Coverage', value: telemetryCoverage, target: 'Above 70% of devices on LAN', higherIsBetter: true },
     { label: 'Active Ticket Load', value: ticketLoad, target: 'Lower is better', higherIsBetter: false }
-  ].map((metric) => ({ ...metric, value: Math.max(0, Math.min(100, Number(metric.value.toFixed(1)))) }));
+  ].map((metric) => ({ ...metric, value: metric.value == null ? null : Math.max(0, Math.min(100, Number(metric.value.toFixed(1)))) }));
 
   summaryHost.innerHTML = metrics.map((metric) => {
-    const health = metric.higherIsBetter
+    const health = metric.value == null ? { tone: 'warning', label: 'No current data' } : metric.higherIsBetter
       ? (metric.value >= 70 ? { tone: 'resolved', label: 'Stable' } : metric.value >= 50 ? { tone: 'warning', label: 'Watch' } : { tone: 'open', label: 'Critical' })
       : (metric.value >= 85 ? { tone: 'open', label: 'Critical' } : metric.value >= 70 ? { tone: 'warning', label: 'Watch' } : { tone: 'resolved', label: 'Stable' });
     return `<div class='insight-item'>
       <div class='insight-label'>${metric.label}</div>
-      <div class='insight-value'>${metric.value}%</div>
+      <div class='insight-value'>${metric.value == null ? 'Unavailable' : `${metric.value}%`}</div>
       <div class='small'>Target: ${metric.target}</div>
       <span class='badge ${health.tone}' style='margin-top:6px'>${health.label}</span>
     </div>`;
@@ -601,10 +610,10 @@ function renderSystemPerformance() {
         <div class='perf-health-item'>
           <div class='perf-health-line'>
             <span class='perf-health-label'>${metric.label}</span>
-            <span class='perf-health-value'>${metric.value}%</span>
+            <span class='perf-health-value'>${metric.value == null ? 'Unavailable' : `${metric.value}%`}</span>
           </div>
           <div class='perf-health-track'>
-            <span class='perf-health-fill' style='width:${metric.value}%'></span>
+            <span class='perf-health-fill' style='width:${metric.value ?? 0}%'></span>
           </div>
         </div>
       `).join('')}
@@ -794,17 +803,19 @@ async function loadAdminDashboard() {
 
   try {
     const ticketsPayload = await window.aitsmFetchAllPaginated('/api/tickets');
-    const [monitorSummary, lanDevices, notifications, inventoryStats, slaAnalytics] = await Promise.all([
+    const [monitorSummary, lanDevices, notifications, inventoryStats, slaAnalytics, agentDevices] = await Promise.all([
       fetchJsonOrThrow('/api/monitoring/summary').catch(() => null),
       fetchJsonOrThrow('/api/monitoring/lan-devices').catch(() => []),
       fetchJsonOrThrow('/api/notifications?page=1&pageSize=8').catch(() => []),
       fetchJsonOrThrow('/api/inventory/stats').catch(() => null),
-      fetchJsonOrThrow('/api/sla/analytics').catch(() => null)
+      fetchJsonOrThrow('/api/sla/analytics').catch(() => null),
+      fetchJsonOrThrow('/api/monitoring/devices').catch(() => null)
     ]);
 
     dashboardState.tickets = normalizeTicketList(ticketsPayload);
     dashboardState.monitoringSummary = monitorSummary || null;
     dashboardState.lanDevices = Array.isArray(lanDevices) ? lanDevices : [];
+    dashboardState.agentDevices = Array.isArray(agentDevices) ? agentDevices : null;
     dashboardState.notifications = Array.isArray(notifications?.items) ? notifications.items : (Array.isArray(notifications) ? notifications : []);
     dashboardState.inventoryStats = inventoryStats || null;
     dashboardState.slaAnalytics = slaAnalytics || null;
@@ -901,12 +912,14 @@ async function refreshDashboardTelemetry() {
   if (dashboardTelemetryRefreshInFlight || document.hidden) return;
   dashboardTelemetryRefreshInFlight = true;
   try {
-    const [monitorSummary, lanDevices] = await Promise.all([
+    const [monitorSummary, lanDevices, agentDevices] = await Promise.all([
       fetchJsonOrThrow('/api/monitoring/summary'),
-      fetchJsonOrThrow('/api/monitoring/lan-devices')
+      fetchJsonOrThrow('/api/monitoring/lan-devices'),
+      fetchJsonOrThrow('/api/monitoring/devices')
     ]);
     dashboardState.monitoringSummary = monitorSummary || null;
     dashboardState.lanDevices = Array.isArray(lanDevices) ? lanDevices : [];
+    dashboardState.agentDevices = Array.isArray(agentDevices) ? agentDevices : null;
     renderMetricCards();
     renderSystemPerformance();
     renderAdminOpsFeed(dashboardState.lanDevices, dashboardState.notifications);

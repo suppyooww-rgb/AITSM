@@ -46,19 +46,11 @@
   }
 
   function formatTime(value) {
-    if (!value) return '';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return aitsmFormatChatTime(value);
   }
 
   function formatConversationTime(value) {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    const today = new Date();
-    return date.toDateString() === today.toDateString()
-      ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      : date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return aitsmFormatConversationTime(value);
   }
 
   function createAvatar(colleague) {

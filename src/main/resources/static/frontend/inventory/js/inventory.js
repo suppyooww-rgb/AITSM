@@ -7,6 +7,61 @@ const inventoryState = {
   searchDebounceTimer: null
 };
 
+let maskedInventoryDetail = null;
+let inventoryRevealTimer = null;
+let inventoryDetailVersion = 0;
+let inventoryDetailsRevealed = false;
+
+function canRevealInventoryDetails() {
+  return ['SUPERADMIN', 'ADMIN', 'IT_ADMIN', 'ASSET_MANAGER'].includes(String(window.currentUser?.role || '').toUpperCase());
+}
+
+function displayInventoryDetail(data) {
+  document.getElementById('inventoryDetailTitle').textContent = data.deviceName || `Asset #${data.id}`;
+  document.getElementById('inventoryDetailSubtitle').textContent = `${data.ipAddress || 'Unavailable'} • ${data.status || 'unknown'}`;
+  renderInventorySummaryCards(data);
+  renderInventoryDetailGroups(data);
+}
+
+function hideInventoryIdentifiers() {
+  window.clearTimeout(inventoryRevealTimer);
+  inventoryRevealTimer = null;
+  inventoryDetailsRevealed = false;
+  if (maskedInventoryDetail) displayInventoryDetail(maskedInventoryDetail);
+  const button = document.getElementById('inventoryRevealBtn');
+  if (button) button.textContent = 'Reveal Details';
+}
+
+async function toggleInventoryIdentifiers() {
+  if (inventoryDetailsRevealed) { hideInventoryIdentifiers(); return; }
+  const id = inventoryState.selectedId;
+  const version = inventoryDetailVersion;
+  if (!id || !maskedInventoryDetail || !canRevealInventoryDetails()) return;
+  const button = document.getElementById('inventoryRevealBtn');
+  if (button) button.disabled = true;
+  try {
+    const token = await obtainReauthToken('inventory-reveal', true);
+    if (version !== inventoryDetailVersion) return;
+    let response;
+    try {
+      response = await fetch(`/api/inventory/${id}/reveal`, {
+        method: 'POST', cache: 'no-store', headers: { ...authHeaders(), 'X-Reauth-Token': token }
+      });
+    } finally { consumeCachedReauth('inventory-reveal'); }
+    const data = await response.json();
+    if (version !== inventoryDetailVersion || document.hidden) return;
+    if (!response.ok) throw new Error(data.error || 'Unable to reveal device details');
+    displayInventoryDetail(data);
+    inventoryDetailsRevealed = true;
+    if (button) button.textContent = 'Hide Details';
+    inventoryRevealTimer = window.setTimeout(hideInventoryIdentifiers, 60000);
+  } catch (error) {
+    if (version === inventoryDetailVersion) alert(error.message || 'Unable to reveal device details');
+  } finally {
+    if (version === inventoryDetailVersion && button) button.disabled = false;
+  }
+}
+
 function inventoryStatusBadge(status) {
   const normalized = String(status || '').toLowerCase();
   if (normalized === 'online') return 'resolved';
@@ -287,6 +342,15 @@ function isInventorySuperAdmin() {
 async function openInventoryDetail(id) {
   const modal = document.getElementById('inventoryDetailModal');
   if (!modal) return;
+  hideInventoryIdentifiers();
+  maskedInventoryDetail = null;
+  const version = ++inventoryDetailVersion;
+  ['inventoryDetailSummary', 'inventoryOverviewFields', 'inventoryHardwareFields', 'inventoryStorageFields', 'inventoryGraphicsFields', 'inventoryOsFields', 'inventoryNetworkFields'].forEach(key => {
+    document.getElementById(key)?.replaceChildren();
+  });
+  const revealButton = document.getElementById('inventoryRevealBtn');
+  revealButton?.classList.toggle('hidden', !canRevealInventoryDetails());
+  if (revealButton) revealButton.disabled = true;
 
   const title = document.getElementById('inventoryDetailTitle');
   const subtitle = document.getElementById('inventoryDetailSubtitle');
@@ -305,6 +369,7 @@ async function openInventoryDetail(id) {
   try {
     const res = await fetch(`/api/inventory/${id}`, { headers: authHeaders() });
     const data = await res.json();
+    if (version !== inventoryDetailVersion) return;
     if (!res.ok) throw new Error(data.error || 'Unable to load asset details');
 
     if (title) title.textContent = data.deviceName || data.hostname || `Asset #${id}`;
@@ -313,7 +378,10 @@ async function openInventoryDetail(id) {
 
     renderInventorySummaryCards(data);
     renderInventoryDetailGroups(data);
+    maskedInventoryDetail = data;
+    if (revealButton) revealButton.disabled = false;
   } catch (error) {
+    if (version !== inventoryDetailVersion) return;
     if (title) title.textContent = 'Asset details unavailable';
     if (subtitle) subtitle.textContent = error.message;
   }
@@ -326,6 +394,9 @@ function handleInventoryRowKey(event, id) {
 }
 
 function closeInventoryDetail() {
+  ++inventoryDetailVersion;
+  hideInventoryIdentifiers();
+  maskedInventoryDetail = null;
   const modal = document.getElementById('inventoryDetailModal');
   modal?.classList.remove('show');
   modal?.classList.add('hidden');
@@ -406,6 +477,10 @@ function bindInventoryEvents() {
 
   document.getElementById('inventorySaveNotesBtn')?.addEventListener('click', saveInventoryNotes);
   document.getElementById('inventoryDeleteBtn')?.addEventListener('click', deleteInventoryAsset);
+  document.getElementById('inventoryRevealBtn')?.addEventListener('click', toggleInventoryIdentifiers);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hideInventoryIdentifiers();
+  });
   document.getElementById('inventoryDetailModal')?.addEventListener('click', (event) => {
     if (event.target?.id === 'inventoryDetailModal') closeInventoryDetail();
   });

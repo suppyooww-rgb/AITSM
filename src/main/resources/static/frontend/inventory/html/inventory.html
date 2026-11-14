@@ -82,12 +82,14 @@
             <p id='inventoryDetailSubtitle' class='section-subtitle'></p>
           </div>
           <div class='inline-actions'>
+            <button id='inventoryRevealBtn' class='btn btn-ghost hidden' type='button' disabled>Reveal Details</button>
             <button id='inventoryDeleteBtn' class='btn btn-danger hidden' type='button'>Permanently Delete</button>
             <button class='btn btn-ghost' type='button' onclick='closeInventoryDetail()'>Close</button>
           </div>
         </div>
 
         <section id='inventoryDetailSummary' class='grid stats inventory-summary-cards'></section>
+        <p class='small'>Device identifiers and assigned names are hidden by default. Authorized reveals require password verification and are logged. Details hide again after one minute.</p>
 
         <section class='inventory-detail-grid'>
           <article class='card inventory-detail-card'><h4>Overview</h4><div id='inventoryOverviewFields' class='inventory-fields'></div></article>

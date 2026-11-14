@@ -104,6 +104,12 @@ class InventoryService(
         )
     }
 
+    fun revealAssetDetails(id: Int, actorId: Int?): InventoryAssetDetails? {
+        val details = getAssetDetails(id) ?: return null
+        audit.log(actorId, "Revealed inventory identifiers for asset #$id", "inventory_assets", target = id.toString())
+        return details
+    }
+
     fun upsertDetectedAsset(payload: InventoryUpsertDetectedRequest, saveSnapshot: Boolean = true): InventoryUpsertResponse {
         val normalized = normalizePayload(payload)
         validatePayload(normalized)

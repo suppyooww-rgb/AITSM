@@ -6,6 +6,9 @@ import backend.models.InventoryNotesRequest
 import backend.models.InventoryStatusRequest
 import backend.models.InventoryUpsertDetectedRequest
 import backend.models.UserRole
+import backend.models.maskIdentifiers
+import backend.security.Permission
+import backend.security.requirePermission
 import backend.security.requireRole
 import backend.security.requireReauthentication
 import backend.security.userId
@@ -39,7 +42,8 @@ fun Route.inventoryRoutes(inventoryService: InventoryService, reauthentication: 
                 page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1,
                 pageSize = call.request.queryParameters["pageSize"]?.toIntOrNull() ?: 20
             )
-            call.respond(inventoryService.listAssets(filters))
+            val page = inventoryService.listAssets(filters)
+            call.respond(page.copy(data = page.data.map { it.maskIdentifiers() }))
         }
 
         get("/stats") {
@@ -76,6 +80,16 @@ fun Route.inventoryRoutes(inventoryService: InventoryService, reauthentication: 
             if (!call.requireRole(UserRole.ADMIN)) return@get
             val id = call.parameters["id"]?.toIntOrNull() ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid asset id"))
             val details = inventoryService.getAssetDetails(id) ?: return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "Asset not found"))
+            call.respond(details.maskIdentifiers())
+        }
+
+        post("/{id}/reveal") {
+            if (!call.requirePermission(Permission.ASSET_MANAGE)) return@post
+            val id = call.parameters["id"]?.toIntOrNull()
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid asset id"))
+            if (!call.requireReauthentication(reauthentication, ReauthScope.INVENTORY_REVEAL)) return@post
+            val details = inventoryService.revealAssetDetails(id, call.userId())
+                ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Asset not found"))
             call.respond(details)
         }
 
@@ -85,7 +99,7 @@ fun Route.inventoryRoutes(inventoryService: InventoryService, reauthentication: 
             val payload = call.receive<InventoryAssignRequest>()
             val updated = inventoryService.updateAssignment(id, payload.assignedDepartment, payload.assignedUser)
                 ?: return@patch call.respond(HttpStatusCode.NotFound, mapOf("error" to "Asset not found"))
-            call.respond(updated)
+            call.respond(updated.maskIdentifiers())
         }
 
         patch("/{id}/notes") {
@@ -94,7 +108,7 @@ fun Route.inventoryRoutes(inventoryService: InventoryService, reauthentication: 
             val payload = call.receive<InventoryNotesRequest>()
             val updated = inventoryService.updateNotes(id, payload.notes)
                 ?: return@patch call.respond(HttpStatusCode.NotFound, mapOf("error" to "Asset not found"))
-            call.respond(updated)
+            call.respond(updated.maskIdentifiers())
         }
 
         patch("/{id}/status") {
@@ -103,7 +117,7 @@ fun Route.inventoryRoutes(inventoryService: InventoryService, reauthentication: 
             val payload = call.receive<InventoryStatusRequest>()
             val updated = inventoryService.updateStatus(id, payload.status)
                 ?: return@patch call.respond(HttpStatusCode.NotFound, mapOf("error" to "Asset not found"))
-            call.respond(updated)
+            call.respond(updated.maskIdentifiers())
         }
 
         delete("/{id}") {

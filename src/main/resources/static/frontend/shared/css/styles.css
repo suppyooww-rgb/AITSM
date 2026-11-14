@@ -456,6 +456,8 @@ textarea { resize: vertical; min-height: 120px; }
   color: #e6edff;
 }
 .auth-title { margin: 0 0 8px; font-size: 38px; text-align: center; color: #fff; }
+.auth-logo-title { line-height: 0; }
+.auth-brand-logo { display: block; width: min(280px, 100%); height: auto; margin: 0 auto; }
 .auth-subtitle { margin: 0 0 16px; color: #a7b5db; text-align: center; }
 .auth-panel label { color: #d9e4ff; }
 .auth-panel input { background: #f4f7ff; border-color: #dbe4ff; }

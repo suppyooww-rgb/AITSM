@@ -106,7 +106,7 @@ function renderUserUtilityHeader() {
   host.innerHTML = `
     <div class='utility-left'>
       <button id='userSidebarToggle' class='btn btn-ghost icon-btn header-icon-btn' type='button' aria-label='Toggle sidebar' title='Toggle sidebar' aria-expanded='true'>${userIcon('menu')}</button>
-      <a class='utility-brand' href='/dashboard-user' aria-label='Go to user dashboard overview'>AITSM Portal</a>
+      <a class='utility-brand' href='/dashboard-user' aria-label='AITSM user dashboard overview'><img class='aitsm-brand-logo' src='/shared/branding/aitsm-logo-v1.png' alt='AITSM' width='150' height='50'></a>
     </div>
     <div class='utility-right'>
       <button class='btn btn-ghost icon-btn header-icon-btn' type='button' onclick='openGlobalSearch()' aria-label='Search AITSM' title='Search AITSM (Ctrl+K)'>⌕</button>

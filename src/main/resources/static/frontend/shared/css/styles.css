@@ -771,6 +771,16 @@ textarea { resize: vertical; min-height: 120px; }
   padding: 0 2px;
 }
 .utility-brand:hover { color: #ffffff; }
+.aitsm-brand-logo {
+  display: block;
+  width: 150px;
+  height: 50px;
+  max-width: 100%;
+  object-fit: contain;
+}
+@media (max-width: 480px) {
+  .aitsm-brand-logo { width: 114px; height: 38px; }
+}
 
 .header-icon-btn {
   border-color: rgba(59, 130, 246, 0.18);

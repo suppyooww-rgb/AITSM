@@ -20,6 +20,8 @@ class AIConversationContractTest {
         assertTrue(chatService.contains("ask exactly one highest-value clarifying question and stop"))
         assertTrue(chatService.contains("Do not combine several questions"))
         assertTrue(chatService.contains("Treat short reports"))
+        assertTrue(chatService.contains("Continue probing across turns until the case is specific enough"))
+        assertTrue(chatService.contains("identify the most important remaining gap, and ask only that question"))
         assertFalse(chatService.contains("Use these short plain headings when relevant: Likely causes"))
     }
 
@@ -53,7 +55,6 @@ class AIConversationContractTest {
 
         assertContains(clarification.orEmpty(), "printer's brand and exact model")
         assertNull(initialTroubleshootingClarification(listOf(AIMessage("user", "Epson L3210 printer is not detected"))))
-        assertNull(initialTroubleshootingClarification(listOf(AIMessage("user", "My laptop is slow"))))
         assertNull(
             initialTroubleshootingClarification(
                 listOf(
@@ -63,6 +64,24 @@ class AIConversationContractTest {
                 )
             )
         )
+    }
+
+    @Test
+    fun `common vague reports receive one category appropriate intake question`() {
+        val cases = mapOf(
+            "My laptop is slow" to "computer's brand and exact model",
+            "I cannot connect to Wi-Fi" to "Which specific device is affected?",
+            "My account is locked" to "Which application or service",
+            "Blue screen error after startup" to "exact stop code or error text",
+            "Email is broken" to "Which specific device, application, account, or service"
+        )
+
+        cases.forEach { (report, expected) ->
+            val reply = initialTroubleshootingClarification(listOf(AIMessage("user", report))).orEmpty()
+            assertContains(reply, expected, ignoreCase = false, message = report)
+            assertTrue(reply.count { it == '?' } == 1, report)
+        }
+        assertNull(initialTroubleshootingClarification(listOf(AIMessage("user", "What is DHCP?"))))
     }
 
     @Test

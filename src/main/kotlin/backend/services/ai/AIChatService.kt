@@ -250,6 +250,8 @@ Follow these rules:
 - First decide whether the conversation contains enough specific information to troubleshoot safely and usefully.
 - When essential context is missing, ask exactly one highest-value clarifying question and stop. Do not combine several questions or provide likely causes, a generic checklist, or a resolution in the same response.
 - Treat short reports such as "my laptop is slow", "the printer is not working", or "I cannot connect" as incomplete unless earlier messages already provide the affected device or service, symptoms, timing, scope, and relevant error details.
+- Continue probing across turns until the case is specific enough to support the next action. Briefly acknowledge each answer, identify the most important remaining gap, and ask only that question.
+- Before troubleshooting, establish the affected product, service, application, account, or device; the relevant environment or version; the exact observed behavior or error; and the scope, timing, or recent change when relevant.
 - For hardware and peripherals, identify the manufacturer and exact model before giving device-specific instructions. Then collect the connection method, operating system, exact symptom or error, and relevant recent changes one question at a time.
 - If the user cannot identify a model, explain briefly where to find it and continue with only safe, model-independent checks.
 - Use the conversation history so you do not repeat questions the user has already answered.
@@ -274,10 +276,46 @@ internal fun initialTroubleshootingClarification(messages: List<AIMessage>): Str
     val userMessages = messages.filter { it.role == "user" }
     if (userMessages.size != 1) return null
     val report = userMessages.single().content.trim()
-    if (!report.contains("printer", ignoreCase = true)) return null
-    val containsProbableModel = printerModelPattern.findAll(report).any { match ->
-        !match.value.startsWith("windows", ignoreCase = true)
+    if (report.startsWith("what is ", ignoreCase = true) ||
+        report.startsWith("how does ", ignoreCase = true) ||
+        report.startsWith("explain ", ignoreCase = true)
+    ) return null
+
+    if (report.contains("printer", ignoreCase = true)) {
+        val containsProbableModel = printerModelPattern.findAll(report).any { match ->
+            !match.value.startsWith("windows", ignoreCase = true)
+        }
+        if (!containsProbableModel) {
+            return "I can help with that. What is the printer's brand and exact model? You can usually find it on the front panel or on a label on the back or underside."
+        }
+        return null
     }
-    if (containsProbableModel) return null
-    return "I can help with that. What is the printer's brand and exact model? You can usually find it on the front panel or on a label on the back or underside."
+
+    if (Regex("""(?i)\b(laptop|desktop|computer|pc)\b""").containsMatchIn(report) &&
+        Regex("""(?i)\b(slow|freeze|freezing|hang|crash|overheat|restart|boot|startup)\b""").containsMatchIn(report)
+    ) {
+        return "Let's narrow that down first. What is the computer's brand and exact model? You can usually find it in System Information or on the device label."
+    }
+
+    if (Regex("""(?i)\b(wi-?fi|internet|network|online)\b""").containsMatchIn(report) &&
+        Regex("""(?i)\b(cannot|can't|unable|disconnect|offline|not connect|no connection)\b""").containsMatchIn(report)
+    ) {
+        return "I can help narrow down the connection problem. Which specific device is affected?"
+    }
+
+    if (Regex("""(?i)\b(account|login|sign[ -]?in|password)\b""").containsMatchIn(report) &&
+        Regex("""(?i)\b(locked|cannot|can't|unable|denied|failed|not work)\b""").containsMatchIn(report)
+    ) {
+        return "I can help with the access issue. Which application or service is the affected account for?"
+    }
+
+    if (Regex("""(?i)\b(blue screen|bsod|stop code)\b""").containsMatchIn(report)) {
+        return "Let's identify the failure precisely. What exact stop code or error text appears on the blue screen?"
+    }
+
+    val wordCount = report.split(Regex("\\s+")).count { it.isNotBlank() }
+    if (wordCount <= 12 && !report.endsWith("?")) {
+        return "I can help investigate that. Which specific device, application, account, or service is affected?"
+    }
+    return null
 }

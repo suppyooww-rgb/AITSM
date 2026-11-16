@@ -45,20 +45,15 @@
         </form>
       </div>
 
-      <aside class='card ai-suggestions-card'>
+      <aside class='card ai-history-card'>
         <div class='card-head'>
           <div>
-            <h3 class='section-title'>Suggested prompts</h3>
-            <p class='section-subtitle'>Quick starters for common IT issues.</p>
+            <h3 class='section-title'>AI chat history</h3>
+            <p class='section-subtitle'>Continue one of your recent troubleshooting conversations.</p>
           </div>
+          <button id='newAiChatBtn' class='btn btn-ghost' type='button'>New chat</button>
         </div>
-        <div class='ai-prompt-list'>
-          <button class='btn btn-ghost ai-prompt' type='button' data-prompt='My laptop is slow'>My laptop is slow</button>
-          <button class='btn btn-ghost ai-prompt' type='button' data-prompt='Printer is not detected'>Printer is not detected</button>
-          <button class='btn btn-ghost ai-prompt' type='button' data-prompt='I cannot connect to Wi-Fi'>I cannot connect to Wi-Fi</button>
-          <button class='btn btn-ghost ai-prompt' type='button' data-prompt='My account is locked'>My account is locked</button>
-          <button class='btn btn-ghost ai-prompt' type='button' data-prompt='Blue screen error after startup'>Blue screen error after startup</button>
-        </div>
+        <div id='aiHistoryList' class='ai-history-list' aria-live='polite'></div>
       </aside>
     </section>
   </main>

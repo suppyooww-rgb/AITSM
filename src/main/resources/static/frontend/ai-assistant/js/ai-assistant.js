@@ -5,13 +5,24 @@ const AI_SESSION_KEY = 'aiAssistantSessionId';
 let aiState = {
   messages: [],
   pending: false,
-  lastVisible: null
+  lastVisible: null,
+  sessionId: null
 };
+
+function createSessionId() {
+  return crypto?.randomUUID?.() || `sess-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function setSessionId(id) {
+  localStorage.setItem(AI_SESSION_KEY, id);
+  aiState.sessionId = id;
+  return id;
+}
 
 function getSessionId() {
   let id = localStorage.getItem(AI_SESSION_KEY);
   if (id) return id;
-  id = (crypto?.randomUUID?.() || `sess-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  id = createSessionId();
   localStorage.setItem(AI_SESSION_KEY, id);
   return id;
 }
@@ -27,6 +38,7 @@ function escapeHtml(value) {
 
 function saveState() {
   try {
+    aiState.sessionId = getSessionId();
     localStorage.setItem(AI_CHAT_STATE_KEY, JSON.stringify(aiState));
   } catch {
     // noop
@@ -39,8 +51,10 @@ function loadState() {
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed.messages)) return;
+    if (parsed.sessionId && parsed.sessionId !== getSessionId()) return;
     aiState.messages = parsed.messages.slice(-20);
     aiState.lastVisible = parsed.lastVisible || null;
+    aiState.sessionId = getSessionId();
   } catch {
     aiState.messages = [];
     aiState.lastVisible = null;
@@ -100,6 +114,93 @@ function renderFallbackPanel() {
   panel.classList.remove('hidden');
   message.textContent = visible.fallback.message || 'AI backend is unavailable.';
   renderFallbackSections(details, visible.fallback);
+}
+
+function formatHistoryTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function renderChatHistory(items = []) {
+  const list = document.getElementById('aiHistoryList');
+  if (!list) return;
+  if (!items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'small ai-history-empty';
+    empty.textContent = 'No saved conversations yet. Start a new chat to create one.';
+    list.replaceChildren(empty);
+    return;
+  }
+
+  const activeSession = getSessionId();
+  list.replaceChildren(...items.map((item) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `ai-history-item${item.sessionId === activeSession ? ' is-active' : ''}`;
+    button.addEventListener('click', () => loadConversation(item.sessionId));
+
+    const title = document.createElement('strong');
+    title.className = 'ai-history-title';
+    title.textContent = item.title || 'Untitled conversation';
+    const meta = document.createElement('span');
+    meta.className = 'ai-history-meta';
+    const messageLabel = Number(item.messageCount) === 1 ? 'message' : 'messages';
+    meta.textContent = `${Number(item.messageCount) || 0} ${messageLabel}${item.updatedAt ? ` · ${formatHistoryTime(item.updatedAt)}` : ''}`;
+    button.append(title, meta);
+    return button;
+  }));
+}
+
+async function loadChatHistory() {
+  const list = document.getElementById('aiHistoryList');
+  if (!list) return;
+  try {
+    const res = await fetch('/api/ai/conversations', { headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Unable to load AI chat history');
+    renderChatHistory(Array.isArray(data) ? data : []);
+  } catch (error) {
+    const message = document.createElement('p');
+    message.className = 'small ai-history-empty';
+    message.textContent = error?.message || 'AI chat history is unavailable.';
+    list.replaceChildren(message);
+  }
+}
+
+async function loadConversation(sessionId) {
+  if (aiState.pending || !sessionId) return;
+  try {
+    const res = await fetch(`/api/ai/conversations/${encodeURIComponent(sessionId)}`, { headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Unable to load conversation');
+    const messages = Array.isArray(data.messages) ? data.messages.slice(-20) : [];
+    const lastAssistant = [...messages].reverse().find((message) => message.role === 'assistant');
+    setSessionId(data.sessionId || sessionId);
+    aiState = {
+      messages,
+      pending: false,
+      lastVisible: lastAssistant ? { type: 'ai', reply: lastAssistant.content || '' } : null,
+      sessionId: getSessionId()
+    };
+    saveState();
+    renderMessages();
+    renderFallbackPanel();
+    await loadChatHistory();
+    document.getElementById('aiMessage')?.focus();
+  } catch (error) {
+    alert(error?.message || 'Unable to load conversation');
+  }
+}
+
+function startNewChat() {
+  setSessionId(createSessionId());
+  aiState = { messages: [], pending: false, lastVisible: null, sessionId: getSessionId() };
+  saveState();
+  renderMessages();
+  renderFallbackPanel();
+  loadChatHistory();
+  document.getElementById('aiMessage')?.focus();
 }
 
 function setPending(isPending) {
@@ -217,12 +318,13 @@ async function sendMessage() {
     renderFallbackPanel();
   } finally {
     setPending(false);
+    await loadChatHistory();
     textarea.focus();
   }
 }
 
 async function clearChat() {
-  aiState = { messages: [], pending: false, lastVisible: null };
+  aiState = { messages: [], pending: false, lastVisible: null, sessionId: getSessionId() };
   saveState();
   renderMessages();
   renderFallbackPanel();
@@ -237,6 +339,8 @@ async function clearChat() {
     });
   } catch {
     // local clear is enough
+  } finally {
+    await loadChatHistory();
   }
 }
 
@@ -294,13 +398,6 @@ async function createDraftFromVisible() {
   location.href = '/create-ticket';
 }
 
-function usePrompt(prompt) {
-  const textarea = document.getElementById('aiMessage');
-  if (!textarea) return;
-  textarea.value = prompt;
-  textarea.focus();
-}
-
 function applyTicketPrefillFromAI() {
   const title = document.getElementById('title');
   const description = document.getElementById('description');
@@ -334,9 +431,7 @@ function wireEvents() {
   });
 
   document.getElementById('clearAiChatBtn')?.addEventListener('click', clearChat);
-  document.querySelectorAll('.ai-prompt').forEach((button) => {
-    button.addEventListener('click', () => usePrompt(button.dataset.prompt || ''));
-  });
+  document.getElementById('newAiChatBtn')?.addEventListener('click', startNewChat);
 
   document.getElementById('createTicketFromLastBtn')?.addEventListener('click', async () => {
     try {
@@ -359,7 +454,9 @@ document.addEventListener('DOMContentLoaded', () => {
   applyTicketPrefillFromAI();
   if (!document.getElementById('aiComposer')) return;
   loadState();
+  aiState.sessionId = getSessionId();
   renderMessages();
   renderFallbackPanel();
   wireEvents();
+  loadChatHistory();
 });

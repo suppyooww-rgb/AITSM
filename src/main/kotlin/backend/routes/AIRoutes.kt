@@ -109,6 +109,19 @@ fun Route.aiRoutes(chatService: AIChatService, configService: AIConfigService, t
         call.respond(HttpStatusCode.OK, mapOf("cleared" to true))
     }
 
+    get("/api/ai/conversations") {
+        if (!call.requireAuthenticated()) return@get
+        call.respond(chatService.listConversations(call.userId()!!))
+    }
+
+    get("/api/ai/conversations/{sessionId}") {
+        if (!call.requireAuthenticated()) return@get
+        val sessionId = call.parameters["sessionId"]?.trim()
+            ?.takeIf { it.matches(Regex("[A-Za-z0-9._:-]{1,128}")) }
+            ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid AI session id"))
+        call.respond(chatService.loadConversation(call.userId()!!, sessionId))
+    }
+
     post("/api/ai/create-ticket-draft") {
         if (!call.requireAuthenticated()) return@post
         val request = call.receive<AITicketDraftRequest>()

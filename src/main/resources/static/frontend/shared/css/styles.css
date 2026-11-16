@@ -1381,19 +1381,51 @@ body.global-search-open { overflow:hidden; }
   padding: 10px 12px;
   font-size: 13px;
 }
-.ai-suggestions-card {
+.ai-history-card {
   display: grid;
   gap: 10px;
+  align-content: start;
+  max-height: calc(100vh - 220px);
 }
-.ai-prompt-list {
+.ai-history-list {
   display: grid;
   gap: 8px;
+  overflow-y: auto;
+  padding-right: 2px;
 }
-.ai-prompt {
-  justify-content: flex-start;
-  text-align: left;
+.ai-history-item {
+  display: grid;
+  gap: 4px;
   width: 100%;
-  min-height: 42px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.ai-history-item:hover,
+.ai-history-item:focus-visible,
+.ai-history-item.is-active {
+  border-color: #60a5fa;
+  background: #eff6ff;
+  outline: none;
+}
+.ai-history-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-history-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ai-history-empty {
+  margin: 0;
+  padding: 10px 2px;
 }
 
 @media (max-width: 1020px) {

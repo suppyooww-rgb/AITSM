@@ -7,6 +7,25 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class FrontendSafetyContractTest {
+    @Test fun `login MFA uses an accessible in-page verification step instead of a browser prompt`() {
+        val page = Files.readString(Path.of("src/main/resources/static/frontend/login/html/login.html"))
+        val script = Files.readString(Path.of("src/main/resources/static/frontend/login/js/auth.js"))
+        val styles = Files.readString(Path.of("src/main/resources/static/frontend/shared/css/styles.css"))
+
+        assertTrue(page.contains("id='mfaLoginStep'"))
+        assertTrue(page.contains("id='mfaLoginForm'"))
+        assertTrue(page.contains("autocomplete='one-time-code'"))
+        assertTrue(page.contains("id='mfaLoginError' class='small mfa-login-error' role='alert'"))
+        assertTrue(page.contains("Use a recovery code instead"))
+        assertTrue(page.contains("Back to sign in"))
+        assertFalse(script.contains("window.prompt("))
+        assertTrue(script.contains("function showMfaLogin(credentials)"))
+        assertTrue(script.contains("async function verifyMfaLogin(event)"))
+        assertTrue(script.contains("mfaLoginUsesRecoveryCode ? { recoveryCode: code } : { mfaCode: code }"))
+        assertTrue(script.contains("setMfaLoginError('That code could not be verified. Check it and try again.')"))
+        assertTrue(styles.contains(".mfa-login-code-group.recovery-mode input"))
+    }
+
     @Test fun `ai interfaces share safe dom renderer`() {
         val renderer = Files.readString(Path.of("src/main/resources/static/frontend/modules/common/js/ai-renderer.js"))
         val standalone = Files.readString(Path.of("src/main/resources/static/frontend/ai-assistant/html/ai-assistant.html"))

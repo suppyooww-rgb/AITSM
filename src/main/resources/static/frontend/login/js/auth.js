@@ -3,6 +3,8 @@ function saveSession(data) {
 }
 
 let pendingMfaAuth = null;
+let pendingMfaCredentials = null;
+let mfaLoginUsesRecoveryCode = false;
 
 async function login() {
   const credentials = { email: email.value.trim(), password: password.value };
@@ -15,12 +17,8 @@ async function login() {
   if (!res.ok) return alert(data.error || data.message || 'Login failed');
 
   if (data.mfaRequired) {
-    const code = window.prompt('Enter your 6-digit authenticator code (or a recovery code):') || '';
-    if (!code) return;
-    const second = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...credentials, ...(code.includes('-') || code.length > 6 ? { recoveryCode: code } : { mfaCode: code }) }) });
-    const completed = await second.json();
-    if (!second.ok || completed.mfaRequired) return alert(completed.error || 'MFA verification failed');
-    saveSession(completed); redirectForRole(completed.user.role); return;
+    showMfaLogin(credentials);
+    return;
   }
   if (data.mfaEnrollmentRequired) {
     const enrollmentResponse = await fetch('/api/auth/mfa/enroll', { method: 'POST', headers: authHeaders() });
@@ -33,6 +31,109 @@ async function login() {
 
   saveSession(data);
   redirectForRole(data.user.role);
+}
+
+function setMfaLoginError(message = '') {
+  const error = document.getElementById('mfaLoginError');
+  if (error) error.textContent = message;
+}
+
+function setMfaLoginMode(useRecoveryCode) {
+  mfaLoginUsesRecoveryCode = Boolean(useRecoveryCode);
+  const group = document.getElementById('mfaLoginCodeGroup');
+  const input = document.getElementById('mfaLoginCode');
+  const label = document.getElementById('mfaLoginCodeLabel');
+  const help = document.getElementById('mfaLoginHelp');
+  const toggle = document.getElementById('mfaLoginModeToggle');
+  if (!input || !label || !help || !toggle) return;
+
+  group?.classList.toggle('recovery-mode', mfaLoginUsesRecoveryCode);
+  label.textContent = mfaLoginUsesRecoveryCode ? 'Recovery code' : 'Authentication code';
+  help.textContent = mfaLoginUsesRecoveryCode
+    ? 'Enter one of the one-time recovery codes you saved when MFA was enabled.'
+    : 'Enter the current six-digit code from your authenticator app.';
+  toggle.textContent = mfaLoginUsesRecoveryCode
+    ? 'Use an authenticator code instead'
+    : 'Use a recovery code instead';
+  input.value = '';
+  input.inputMode = mfaLoginUsesRecoveryCode ? 'text' : 'numeric';
+  input.autocomplete = mfaLoginUsesRecoveryCode ? 'off' : 'one-time-code';
+  input.maxLength = mfaLoginUsesRecoveryCode ? 64 : 6;
+  input.pattern = mfaLoginUsesRecoveryCode ? '[A-Za-z0-9_-]+' : '[0-9]{6}';
+  input.placeholder = mfaLoginUsesRecoveryCode ? 'Enter recovery code' : '000000';
+  setMfaLoginError();
+  input.focus();
+}
+
+function showMfaLogin(credentials) {
+  pendingMfaCredentials = { ...credentials };
+  document.getElementById('loginForm')?.classList.add('hidden');
+  document.getElementById('authAccountNotice')?.classList.add('hidden');
+  document.getElementById('mfaLoginStep')?.classList.remove('hidden');
+  const subtitle = document.getElementById('authSubtitle');
+  if (subtitle) subtitle.textContent = 'Complete the second sign-in step.';
+  setMfaLoginMode(false);
+}
+
+async function verifyMfaLogin(event) {
+  event?.preventDefault();
+  const input = document.getElementById('mfaLoginCode');
+  const button = document.getElementById('mfaLoginVerifyButton');
+  const code = input?.value.trim() || '';
+  if (!pendingMfaCredentials || !input || !button) return;
+
+  if (!mfaLoginUsesRecoveryCode && !/^\d{6}$/.test(code)) {
+    setMfaLoginError('Enter the six-digit code shown in your authenticator app.');
+    input.focus();
+    return;
+  }
+  if (mfaLoginUsesRecoveryCode && code.length < 8) {
+    setMfaLoginError('Enter a complete recovery code.');
+    input.focus();
+    return;
+  }
+
+  setMfaLoginError();
+  button.disabled = true;
+  button.textContent = 'Verifying…';
+  try {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...pendingMfaCredentials,
+        ...(mfaLoginUsesRecoveryCode ? { recoveryCode: code } : { mfaCode: code })
+      })
+    });
+    const completed = await response.json().catch(() => ({}));
+    if (!response.ok || completed.mfaRequired) {
+      setMfaLoginError('That code could not be verified. Check it and try again.');
+      input.select();
+      return;
+    }
+    pendingMfaCredentials = null;
+    saveSession(completed);
+    redirectForRole(completed.user.role);
+  } catch {
+    setMfaLoginError('Unable to reach the server. Check your connection and try again.');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Verify code';
+  }
+}
+
+async function returnToLogin() {
+  pendingMfaCredentials = null;
+  setMfaLoginError();
+  document.getElementById('mfaLoginStep')?.classList.add('hidden');
+  document.getElementById('loginForm')?.classList.remove('hidden');
+  document.getElementById('authAccountNotice')?.classList.remove('hidden');
+  const subtitle = document.getElementById('authSubtitle');
+  if (subtitle) subtitle.textContent = 'Sign in to continue.';
+  const passwordInput = document.getElementById('password');
+  if (passwordInput) passwordInput.value = '';
+  await fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
+  passwordInput?.focus();
 }
 
 function setRecoveryMessage(elementId, message = '', tone = 'danger') {
@@ -262,6 +363,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('loginForm')?.addEventListener('submit', event => {
     event.preventDefault();
     login();
+  });
+  document.getElementById('mfaLoginForm')?.addEventListener('submit', verifyMfaLogin);
+  document.getElementById('mfaLoginModeToggle')?.addEventListener('click', () => setMfaLoginMode(!mfaLoginUsesRecoveryCode));
+  document.getElementById('mfaLoginBackButton')?.addEventListener('click', returnToLogin);
+  document.getElementById('mfaLoginCode')?.addEventListener('input', event => {
+    if (!mfaLoginUsesRecoveryCode) event.target.value = event.target.value.replace(/\D/g, '').slice(0, 6);
   });
   setPasswordVisibility('password', 'loginPasswordToggle');
   setPasswordVisibility('resetNewPassword', 'resetNewPasswordToggle');

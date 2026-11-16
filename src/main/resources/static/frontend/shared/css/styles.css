@@ -485,6 +485,15 @@ textarea { resize: vertical; min-height: 120px; }
 .provider-mark { width: 20px; height: 20px; display: inline-grid; place-items: center; margin-right: 8px; border-radius: 4px; font-weight: 800; }
 .provider-google { color: #4285f4; }
 .auth-oauth-message { min-height: 18px; margin: 10px 0 0; color: #bfdbfe; }
+.mfa-login-step { text-align: center; }
+.mfa-login-heading { margin: 0 0 8px; color: #fff; font-size: 24px; }
+.mfa-login-copy { min-height: 40px; margin: 0 0 16px; color: #b8c6e8; line-height: 1.5; }
+.mfa-login-code-group { text-align: left; }
+.mfa-login-code-group input { text-align: center; font-size: 26px; font-variant-numeric: tabular-nums; letter-spacing: .42em; }
+.mfa-login-code-group.recovery-mode input { font-size: 17px; letter-spacing: .06em; text-transform: uppercase; }
+.mfa-login-error { min-height: 21px; margin: 8px 0 4px; color: #fda4af; text-align: left; }
+.mfa-login-secondary-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.mfa-login-secondary-actions .link-button { color: #8ec7ff; font-size: 14px; }
 .mfa-enrollment-card { width: min(520px, 100%); text-align: center; }
 .mfa-enrollment-card h3 { margin: 4px 0 8px; color: var(--text); }
 .mfa-qr-code { display: block; width: 240px; height: 240px; margin: 16px auto; border: 10px solid #fff; border-radius: 12px; }

@@ -9,7 +9,7 @@
 <body class='auth-shell auth-dark'>
   <section class='auth-panel'>
     <h2 class='auth-title auth-logo-title'><img class='auth-brand-logo' src='/shared/branding/aitsm-logo-v1.png' alt='AITSM' width='280' height='93'></h2>
-    <p class='auth-subtitle'>Sign in to continue.</p>
+    <p id='authSubtitle' class='auth-subtitle'>Sign in to continue.</p>
     <form id='loginForm'>
       <div class='form-grid' style='grid-template-columns:1fr'>
         <div class='form-group'>
@@ -34,7 +34,24 @@
       </label>
       <button class='btn btn-primary auth-login-btn' type='submit'>Login</button>
     </form>
-    <p class='small auth-links'>New accounts are created only through an invitation sent by your administrator.</p>
+    <section id='mfaLoginStep' class='mfa-login-step hidden' aria-labelledby='mfaLoginTitle'>
+      <p class='eyebrow auth-eyebrow'>Account security</p>
+      <h3 id='mfaLoginTitle' class='mfa-login-heading'>Verify your identity</h3>
+      <p id='mfaLoginHelp' class='small mfa-login-copy'>Enter the current six-digit code from your authenticator app.</p>
+      <form id='mfaLoginForm' novalidate>
+        <div id='mfaLoginCodeGroup' class='form-group mfa-login-code-group'>
+          <label id='mfaLoginCodeLabel' for='mfaLoginCode'>Authentication code</label>
+          <input id='mfaLoginCode' type='text' inputmode='numeric' autocomplete='one-time-code' maxlength='6' pattern='[0-9]{6}' placeholder='000000' autocapitalize='off' spellcheck='false' aria-describedby='mfaLoginHelp mfaLoginError' required>
+        </div>
+        <p id='mfaLoginError' class='small mfa-login-error' role='alert' aria-live='polite'></p>
+        <button id='mfaLoginVerifyButton' class='btn btn-primary auth-login-btn' type='submit'>Verify code</button>
+      </form>
+      <div class='mfa-login-secondary-actions'>
+        <button id='mfaLoginModeToggle' class='link-button text-primary' type='button'>Use a recovery code instead</button>
+        <button id='mfaLoginBackButton' class='link-button text-primary' type='button'>Back to sign in</button>
+      </div>
+    </section>
+    <p id='authAccountNotice' class='small auth-links'>New accounts are created only through an invitation sent by your administrator.</p>
   </section>
 
   <div id='forgotPasswordModal' class='modal-overlay hidden' role='dialog' aria-modal='true' aria-labelledby='forgotPasswordTitle'>
@@ -118,6 +135,6 @@
     </section>
   </div>
   <script src='/modules/common/js/app.js?v=canonical-routes-v2'></script>
-  <script src='/login/js/auth.js?v=login-enter-v2'></script>
+  <script src='/login/js/auth.js?v=mfa-login-step-v1'></script>
 </body>
 </html>

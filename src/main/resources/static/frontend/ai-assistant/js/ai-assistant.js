@@ -65,7 +65,7 @@ function renderMessages() {
   if (!aiState.messages.length) {
     const empty = document.createElement('p');
     empty.className = 'small';
-    empty.textContent = 'Start by describing your issue. The assistant will return troubleshooting guidance.';
+    empty.textContent = 'Describe what is happening in your own words. The assistant may ask a few questions before suggesting the next step.';
     thread.replaceChildren(empty);
   } else {
     thread.replaceChildren(...aiState.messages.map((message) => {

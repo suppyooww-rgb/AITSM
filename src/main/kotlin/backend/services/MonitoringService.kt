@@ -108,7 +108,12 @@ class MonitoringService(
     fun removeOwned(rawId: String, userId: Int): Boolean = repository.removeOwned(UUID.fromString(rawId), userId)
     fun revokeOwned(rawId: String, userId: Int): Boolean = repository.revokeOwned(UUID.fromString(rawId), userId)
     fun devices() = visibleCollectorDevices(deduplicatedLiveDevices(repository.devices()))
-    fun lanDevices(includeHistory: Boolean = false) = repository.lanDevices(includeHistory)
+    fun lanDevices(includeHistory: Boolean = false): List<backend.models.LanDeviceDto> {
+        val cidrs = assetDetectionService.getConfiguredPrivateCidrs()
+        return repository.lanDevices(includeHistory).map { device ->
+            device.copy(lanPresenceState = managedLanPresence(device, cidrs))
+        }
+    }
     fun lanPeerIps() = lanDevices().filter { it.lanPresenceState == "ON_LAN" }.map { it.ipAddress }.distinct().sorted()
     fun cpu() = devices().filter { it.telemetryAvailable }.map { mapOf("device" to it.hostname, "cpu" to (it.cpuUsagePercent?.toString() ?: "unavailable")) }
     fun alerts() = devices().filter { (it.cpuUsagePercent ?: 0.0) > 85 || (it.memoryUsagePercent ?: 0.0) > 90 }
@@ -215,6 +220,14 @@ class MonitoringService(
             ((bytes[0].toInt() and 0xff) == 172 && (bytes[1].toInt() and 0xff) in 16..31) ||
             ((bytes[0].toInt() and 0xff) == 192 && (bytes[1].toInt() and 0xff) == 168))
     }.getOrDefault(false)
+}
+
+internal fun managedLanPresence(device: backend.models.LanDeviceDto, cidrs: List<String>): String = when {
+    device.registeredCollectorId == null || device.lanPresenceState == "ON_LAN" -> device.lanPresenceState
+    device.telemetryState == "OFFLINE" -> "OFFLINE"
+    device.telemetryState == "STALE" -> "STALE"
+    device.telemetryState == "AVAILABLE" && cidrs.isNotEmpty() && !isUsableLanHost(device.ipAddress, cidrs) -> "OFF_LAN"
+    else -> device.lanPresenceState
 }
 
 internal fun isOwnCollectorHost(device: CollectorDeviceReport): Boolean =

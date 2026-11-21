@@ -4,6 +4,7 @@ import backend.config.AiBridgeJobsTable
 import backend.config.MonitoringCollectorsTable
 import backend.models.ai.AIBridgeHeartbeatRequest
 import backend.models.ai.AIBridgeStatusResponse
+import org.jetbrains.exposed.sql.lowerCase
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
@@ -134,7 +135,7 @@ class AIBridgeRepository(private val clock: Clock = Clock.systemUTC()) {
         if (!collector[MonitoringCollectorsTable.aiBridgeEnabled] || !collector[MonitoringCollectorsTable.aiBridgeAvailable]) return@transaction null
         val model = collector[MonitoringCollectorsTable.aiBridgeModel] ?: return@transaction null
         val candidate = AiBridgeJobsTable.selectAll().where {
-            (AiBridgeJobsTable.status eq "PENDING") and (AiBridgeJobsTable.model eq model)
+            (AiBridgeJobsTable.status eq "PENDING") and (AiBridgeJobsTable.model.lowerCase() eq model.lowercase())
         }.orderBy(AiBridgeJobsTable.createdAt, SortOrder.ASC).limit(1).singleOrNull() ?: return@transaction null
         val claimed = AiBridgeJobsTable.update({
             (AiBridgeJobsTable.id eq candidate[AiBridgeJobsTable.id]) and (AiBridgeJobsTable.status eq "PENDING")

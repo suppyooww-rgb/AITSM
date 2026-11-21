@@ -98,7 +98,9 @@ class AIChatService(
             return fallbackResponse(cleanInput, cfg.provider, cfg.model, synchronized(history) { history.size }, providerReply.errorMessage ?: "Local AI bridge unavailable")
         }
 
-        val plainReply = normalizeProviderReply(providerReply.content)
+        val plainReply = normalizeProviderReply(providerReply.content)?.let { reply ->
+            advancePastAnsweredQuestion(promptMessages, reply)
+        }
         if (plainReply.isNullOrBlank()) {
             logger.warn("Local AI returned empty or malformed content")
             return fallbackResponse(cleanInput, cfg.provider, cfg.model, synchronized(history) { history.size }, "Malformed AI payload")
@@ -254,7 +256,7 @@ Follow these rules:
 - Before troubleshooting, establish the affected product, service, application, account, or device; the relevant environment or version; the exact observed behavior or error; and the scope, timing, or recent change when relevant.
 - For hardware and peripherals, identify the manufacturer and exact model before giving device-specific instructions. Then collect the connection method, operating system, exact symptom or error, and relevant recent changes one question at a time.
 - If the user cannot identify a model, explain briefly where to find it and continue with only safe, model-independent checks.
-- Use the conversation history so you do not repeat questions the user has already answered.
+- Treat a short answer as the answer to your last question. Carry supplied model numbers and operating systems forward. Once you can give a safe first check, give it immediately.
 - Once enough context exists, suggest only one or two safe, relevant actions at a time, explain briefly why they help, and ask the user to report the result before continuing.
 - Diagnose likely causes only from user-provided information and observed results. Clearly describe uncertain causes as possibilities, not confirmed findings.
 - Never say an issue is resolved unless the user confirms that it is working again.
@@ -318,4 +320,30 @@ internal fun initialTroubleshootingClarification(messages: List<AIMessage>): Str
         return "I can help investigate that. Which specific device, application, account, or service is affected?"
     }
     return null
+}
+
+private val modelQuestion = Regex("""(?i)\b(?:what(?:'s| is)?|which|provide|confirm|share|tell me|identify|know)\b[^?.!]{0,65}\b(?:model|model number)\b""")
+private val osQuestion = Regex("""(?i)\b(?:what(?:'s| is)?|which|provide|confirm|share|tell me|identify|know)\b[^?.!]{0,65}\b(?:operating system|OS|version of Windows|Windows version)\b""")
+private val osAnswer = Regex("""(?i)\b(?:windows\s*(?:xp|vista|\d+)|macOS|ubuntu|linux|chrome\s?os|android|iOS)\b""")
+private val modelIdentifier = Regex("""(?i)\b(?=[a-z0-9-]*[a-z])(?=[a-z0-9-]*\d)[a-z0-9-]{3,}\b""")
+
+internal fun advancePastAnsweredQuestion(messages: List<AIMessage>, reply: String): String {
+    if ('?' !in reply) return reply
+    val question = reply.substringBeforeLast('?').substringAfterLast('.').substringAfterLast('!').trim()
+    val answers = messages.filter { it.role == "user" }.map { it.content }
+    val repeatedModel = modelQuestion.containsMatchIn(question) && messages.zipWithNext().any { (ask, answer) ->
+        ask.role == "assistant" && modelQuestion.containsMatchIn(ask.content) && answer.role == "user" &&
+            modelIdentifier.containsMatchIn(osAnswer.replace(answer.content, ""))
+    }
+    val repeatedOs = osQuestion.containsMatchIn(question) && answers.any(osAnswer::containsMatchIn)
+    if (!repeatedModel && !repeatedOs) return reply
+    val report = answers.joinToString(" ").lowercase()
+    val next = when {
+        Regex("""\b(slow|sluggish|lagging|freezing)\b""").containsMatchIn(report) &&
+            Regex("""(?i)\bwindows\s*\d+""").containsMatchIn(report) ->
+            "While the slowdown is happening, open Task Manager with Ctrl+Shift+Esc. On the Processes tab, which resource is busiest: CPU, memory, or disk?"
+        else -> "When you reproduce the issue, what happens on screen at the point where it goes wrong?"
+    }
+    return if (messages.none { it.role == "assistant" && it.content == next }) next
+        else "We've covered the device details. Save the symptoms and the results of the checks so far in a support ticket so a technician can investigate."
 }
